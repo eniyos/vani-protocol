@@ -47,8 +47,8 @@ The server speaks MCP over **stdio**. Point any MCP-capable agent at it:
 |------|-------------|
 | `get_balance`       | SOL balance for an address (lamports → SOL) |
 | `get_token_balance` | SPL token balance for an address + mint |
-| `get_price`         | Live token price (Jupiter price API v2) |
-| `jupiter_quote`     | Swap quote (Jupiter quote API v6) — no execution |
+| `get_price`         | Live token price (Jupiter price API v3) |
+| `jupiter_quote`     | Swap quote (Jupiter swap API v1) — no execution |
 | `vani_command`      | Parse a Hindi/Hinglish command into a structured intent |
 
 ## Configuration

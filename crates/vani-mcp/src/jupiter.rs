@@ -6,13 +6,19 @@ use serde_json::Value;
 
 pub const SOL: &str = "So11111111111111111111111111111111111111112";
 pub const USDC: &str = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+pub const USDT: &str = "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB";
+pub const BONK: &str = "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263";
+pub const JUP: &str = "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN";
 
 /// Map a common symbol to its mainnet mint. Kept small on purpose (MVP);
-/// add symbols as integrations land.
+/// add symbols as integrations land. Keep in sync with the parser's token list.
 fn symbol_to_mint(symbol: &str) -> Option<&'static str> {
     match symbol.trim().to_ascii_uppercase().as_str() {
         "SOL" | "WSOL" | "WRAPPED_SOL" => Some(SOL),
         "USDC" => Some(USDC),
+        "USDT" => Some(USDT),
+        "BONK" => Some(BONK),
+        "JUP" => Some(JUP),
         _ => None,
     }
 }
@@ -53,6 +59,9 @@ pub async fn price(client: &Client, symbols: &str) -> Result<String> {
         let symbol = match mint.as_str() {
             SOL => "SOL",
             USDC => "USDC",
+            USDT => "USDT",
+            BONK => "BONK",
+            JUP => "JUP",
             _ => &mint[..8.min(mint.len())],
         };
         let p = info.get("usdPrice").and_then(Value::as_f64).unwrap_or(f64::NAN);
