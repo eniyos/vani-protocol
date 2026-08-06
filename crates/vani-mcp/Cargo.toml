@@ -1,0 +1,19 @@
+[package]
+name = "vani-mcp"
+version = "0.1.0"
+edition = "2021"
+description = "Vani Protocol — a Rust-native MCP server for vernacular (voice-first) Solana DeFi"
+license = "MIT"
+repository = "https://github.com/eniyos/vani-protocol"
+publish = false
+
+[dependencies]
+rmcp = { version = "3.1.1", features = ["server", "macros", "schemars", "transport-io"] }
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+reqwest = { workspace = true }
+tokio = { workspace = true }
+dotenvy = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
