@@ -159,7 +159,7 @@ impl VaniServer {
         }
     }
 
-    #[tool(description = "Parse a Hindi/Hinglish/Telugu/English command into a structured intent (MVP rule-based parser).")]
+    #[tool(description = "Parse a Hindi/Hinglish/Telugu/Tamil/English command into a structured intent (MVP rule-based parser).")]
     fn vani_command(&self, Parameters(VaniCommandParams { text }): Parameters<VaniCommandParams>) -> String {
         let intent = vanicommand::parse(&text);
         serde_json::to_string_pretty(&intent).unwrap_or_else(|_| format!("{intent:?}"))

@@ -1,6 +1,6 @@
 //! Rule-based vernacular command parser (MVP).
 //!
-//! Turns Hindi / Hinglish / English / Telugu phrases like
+//! Turns Hindi / Hinglish / English / Telugu / Tamil phrases like
 //! `"1 SOL Jupiter se USDC mein swap karo"` into a structured [`Intent`].
 //! Deliberately simple — a real NLU pass (via rig + a small model) lands in
 //! Weeks 1–2. This is a pure function so it's fully unit-testable.
@@ -116,13 +116,37 @@ fn contains_word(haystack: &str, word: &str) -> bool {
     find_word(haystack, word).is_some()
 }
 
+/// Action keyword sets per language (MVP, substring-matched). `price` is
+/// checked before `balance` on purpose: Telugu "ధర ఎంత?" ("price how much?")
+/// contains the balance keyword ఎంత, so the price word must win first.
 fn detect_action(lower: &str) -> &'static str {
-    if contains_any(lower, &["swap", "स्वैप", "बदलें", "badal", "convert", "कनवर्ट"]) {
+    if contains_any(
+        lower,
+        &[
+            "swap", "स्वैप", "बदलें", "badal", "convert", "कनवर्ट", // Hinglish + Hindi
+            "మార్చు", "మార్పిడి", "కన్వర్ట్", // Telugu: change / exchange / convert
+            "மாற்று", "மாற்றம்", "ஸ்வாப்", // Tamil: change / exchange / swap
+        ],
+    ) {
         "swap"
-    } else if contains_any(lower, &["balance", "बैलेंस", "बैलेन्स", "kya hai mera", "enta"]) {
-        "balance"
-    } else if contains_any(lower, &["price", "कीमत", "rate", "भाव"]) {
+    } else if contains_any(
+        lower,
+        &[
+            "price", "कीमत", "rate", "भाव", // Hinglish + Hindi
+            "ధర", "కీమత్", "రేటు", // Telugu: price / keemat / rate
+            "விலை", "விகிதம்", // Tamil: price / rate
+        ],
+    ) {
         "price"
+    } else if contains_any(
+        lower,
+        &[
+            "balance", "बैलेंस", "बैलेन्स", "kya hai mera", "enta", // Hinglish + Hindi + Telugu
+            "ఎంత", "బ్యాలెన్స్", // Telugu: how much / balance
+            "எவ்வளவு", "இருப்பு", "பேலன்ஸ்", // Tamil: how much / balance
+        ],
+    ) {
+        "balance"
     } else {
         "unknown"
     }
@@ -319,5 +343,89 @@ mod tests {
     fn hindi_word_not_substring() {
         // "एक्स" (X) must not parse as the number एक.
         assert_eq!(extract_amount("एक्स बोलो"), None);
+    }
+
+    // ---- Week-2 checkbox: 10+ Hindi / Telugu / Tamil commands ----
+
+    #[test]
+    fn hindi_balance_imperative() {
+        let i = parse("मुझे अपना बैलेंस दिखाओ");
+        assert_eq!(i.action, "balance");
+    }
+
+    #[test]
+    fn hindi_swap_three_sol() {
+        let i = parse("तीन सोल स्वैप करो यूएसडीसी");
+        assert_eq!(i.action, "swap");
+        assert_eq!(i.source.as_deref(), Some("sol"));
+        assert_eq!(i.target.as_deref(), Some("usdc"));
+        assert_eq!(i.amount, Some(3.0));
+    }
+
+    #[test]
+    fn hindi_price_word_bhaav() {
+        let i = parse("सोल का भाव बताओ");
+        assert_eq!(i.action, "price");
+        assert_eq!(i.source.as_deref(), Some("sol"));
+    }
+
+    #[test]
+    fn telugu_price() {
+        let i = parse("SOL ధర ఎంత?");
+        assert_eq!(i.action, "price"); // ధర wins over the balance keyword ఎంత
+        assert_eq!(i.source.as_deref(), Some("sol"));
+    }
+
+    #[test]
+    fn telugu_balance() {
+        let i = parse("నా బ్యాలెన్స్ ఎంత?");
+        assert_eq!(i.action, "balance");
+    }
+
+    #[test]
+    fn telugu_swap_with_digits() {
+        let i = parse("2 SOL మార్చు USDC");
+        assert_eq!(i.action, "swap");
+        assert_eq!(i.source.as_deref(), Some("sol"));
+        assert_eq!(i.target.as_deref(), Some("usdc"));
+        assert_eq!(i.amount, Some(2.0));
+    }
+
+    #[test]
+    fn telugu_swap_direction() {
+        let i = parse("USDC ని SOL గా మార్చు");
+        assert_eq!(i.action, "swap");
+        assert_eq!(i.source.as_deref(), Some("usdc"));
+        assert_eq!(i.target.as_deref(), Some("sol"));
+    }
+
+    #[test]
+    fn tamil_price() {
+        let i = parse("SOL விலை என்ன?");
+        assert_eq!(i.action, "price");
+        assert_eq!(i.source.as_deref(), Some("sol"));
+    }
+
+    #[test]
+    fn tamil_balance() {
+        let i = parse("என் பேலன்ஸ் எவ்வளவு?");
+        assert_eq!(i.action, "balance");
+    }
+
+    #[test]
+    fn tamil_swap_with_amount() {
+        let i = parse("1 SOL ஐ USDC ஆக மாற்று");
+        assert_eq!(i.action, "swap");
+        assert_eq!(i.source.as_deref(), Some("sol"));
+        assert_eq!(i.target.as_deref(), Some("usdc"));
+        assert_eq!(i.amount, Some(1.0));
+    }
+
+    #[test]
+    fn tamil_swap_direction() {
+        let i = parse("USDC ஐ SOL ஆக மாற்று");
+        assert_eq!(i.action, "swap");
+        assert_eq!(i.source.as_deref(), Some("usdc"));
+        assert_eq!(i.target.as_deref(), Some("sol"));
     }
 }
