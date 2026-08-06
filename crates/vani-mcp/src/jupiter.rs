@@ -31,7 +31,7 @@ pub async fn price(client: &Client, symbols: &str) -> Result<String> {
         .filter(|s| !s.is_empty())
         .map(|s| {
             symbol_to_mint(s)
-                .context("get_price supports only SOL and USDC symbols for now")
+                .context("get_price supports only SOL, USDC, USDT, BONK, JUP")
         })
         .collect::<Result<Vec<_>>>()?;
 
@@ -66,9 +66,9 @@ pub async fn price(client: &Client, symbols: &str) -> Result<String> {
         };
         let p = info.get("usdPrice").and_then(Value::as_f64).unwrap_or(f64::NAN);
         let chg = info.get("priceChange24h").and_then(Value::as_f64).unwrap_or(f64::NAN);
-        lines.push(format!(
-            "{symbol}: ${p:.6} (24h {chg:+.2}%)"
-        ));
+        let price = if p.is_nan() { "n/a".to_string() } else { format!("${p:.6}") };
+        let change = if chg.is_nan() { "n/a".to_string() } else { format!("{chg:+.2}%") };
+        lines.push(format!("{symbol}: {price} (24h {change})"));
     }
     Ok(lines.join("\n"))
 }

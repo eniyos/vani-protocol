@@ -10,9 +10,9 @@ use crate::rpc::SolanaRpc;
 use crate::sarvam;
 use crate::vanicommand;
 
-/// System-program public key (all-zero base58) — a valid pubkey whose balance
+/// System-program public key (32 bytes, base58) — a valid pubkey whose balance
 /// is always 0; used only as a safe default when no address is supplied.
-const ZERO_ADDRESS: &str = "111111111111111111111111111111111111111111111111111";
+const SYSTEM_PROGRAM_ADDRESS: &str = "11111111111111111111111111111111";
 
 #[derive(Clone)]
 pub struct VaniServer {
@@ -41,7 +41,7 @@ impl VaniServer {
         if given.is_empty() {
             self.default_address
                 .clone()
-                .unwrap_or_else(|| ZERO_ADDRESS.to_string())
+                .unwrap_or_else(|| SYSTEM_PROGRAM_ADDRESS.to_string())
         } else {
             given.to_string()
         }
@@ -68,7 +68,7 @@ pub struct TokenBalanceParams {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct PriceParams {
-    /// Token symbol or comma-separated list (SOL/USDC only for now).
+    /// Token symbol or comma-separated list (SOL, USDC, USDT, BONK, JUP).
     pub symbol: String,
 }
 
@@ -143,7 +143,7 @@ impl VaniServer {
         }
     }
 
-    #[tool(description = "Get a live token price from the Jupiter price API (SOL and USDC supported).")]
+    #[tool(description = "Get a live token price from the Jupiter price API (SOL, USDC, USDT, BONK, JUP; comma-separate multiple symbols).")]
     async fn get_price(&self, Parameters(PriceParams { symbol }): Parameters<PriceParams>) -> String {
         match jupiter::price(&self.http, &symbol).await {
             Ok(out) => out,

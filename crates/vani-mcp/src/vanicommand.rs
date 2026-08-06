@@ -75,15 +75,45 @@ pub fn parse(raw: &str) -> Intent {
     }
 }
 
-/// Canonical symbols mentioned in the input, in order of first appearance.
+/// Canonical symbols mentioned in the input, in order of first appearance in
+/// the *sentence*, not the needle-table order. Word-boundary matching keeps
+/// "jup" from matching inside "Jupiter" and "sol" inside "solana". Without
+/// position-based ordering, "USDC se SOL swap karo" would mis-assign source.
 fn mentioned_symbols(lower: &str) -> Vec<String> {
-    let mut seen: Vec<&'static str> = Vec::new();
+    let mut found: Vec<(usize, &'static str)> = Vec::new();
     for (needle, canonical) in TOKEN_NEEDLES {
-        if lower.contains(needle) && !seen.contains(canonical) {
-            seen.push(canonical);
+        if let Some(pos) = find_word(lower, needle) {
+            if !found.iter().any(|(_, c)| *c == *canonical) {
+                found.push((pos, canonical));
+            }
         }
     }
-    seen.into_iter().map(String::from).collect()
+    found.sort_by_key(|(pos, _)| *pos);
+    found.into_iter().map(|(_, c)| String::from(c)).collect()
+}
+
+/// Byte index of the first standalone occurrence of `word` in `haystack`.
+fn find_word(haystack: &str, word: &str) -> Option<usize> {
+    let chars: Vec<char> = haystack.chars().collect();
+    let w: Vec<char> = word.chars().collect();
+    if w.is_empty() || w.len() > chars.len() {
+        return None;
+    }
+    for i in 0..=chars.len() - w.len() {
+        if chars[i..i + w.len()] == w[..]
+            && (i == 0 || !is_continuation(chars[i - 1]))
+            && (i + w.len() == chars.len() || !is_continuation(chars[i + w.len()]))
+        {
+            return Some(chars[..i].iter().map(|c| c.len_utf8()).sum());
+        }
+    }
+    None
+}
+
+/// Word-boundary match so "एक" inside "एक्स" doesn't count as a number. Treats
+/// Devanagari letters/digits and combining marks (matras, virama) as continuation.
+fn contains_word(haystack: &str, word: &str) -> bool {
+    find_word(haystack, word).is_some()
 }
 
 fn detect_action(lower: &str) -> &'static str {
@@ -157,25 +187,6 @@ fn scan_number(s: &str) -> Option<f64> {
     }
 }
 
-/// Word-boundary match so "एक" inside "एक्स" doesn't count as a number. Treats
-/// Devanagari letters/digits and combining marks (matras, virama) as continuation.
-fn contains_word(haystack: &str, word: &str) -> bool {
-    let chars: Vec<char> = haystack.chars().collect();
-    let w: Vec<char> = word.chars().collect();
-    if w.is_empty() || w.len() > chars.len() {
-        return false;
-    }
-    for i in 0..=chars.len() - w.len() {
-        if chars[i..i + w.len()] == w[..]
-            && (i == 0 || !is_continuation(chars[i - 1]))
-            && (i + w.len() == chars.len() || !is_continuation(chars[i + w.len()]))
-        {
-            return true;
-        }
-    }
-    false
-}
-
 fn is_continuation(c: char) -> bool {
     c.is_alphanumeric() || matches!(c, 'ं' | 'ः' | 'ँ' | '़' | '्')
 }
@@ -191,6 +202,32 @@ mod tests {
         assert_eq!(i.source.as_deref(), Some("sol"));
         assert_eq!(i.target.as_deref(), Some("usdc"));
         assert_eq!(i.amount, Some(1.0));
+    }
+
+    #[test]
+    fn swap_direction_preserved_when_target_comes_first() {
+        // "USDC se SOL" — USDC is mentioned first in the sentence, so it must
+        // be the source even though "sol" precedes "usdc" in the needle table.
+        let i = parse("USDC se SOL mein swap karo");
+        assert_eq!(i.action, "swap");
+        assert_eq!(i.source.as_deref(), Some("usdc"));
+        assert_eq!(i.target.as_deref(), Some("sol"));
+    }
+
+    #[test]
+    fn solana_is_not_a_token_mention() {
+        // "solana" contains "sol" but isn't a token mention.
+        let i = parse("solana ki price kya hai");
+        assert_eq!(i.action, "price");
+        assert_eq!(i.source, None);
+    }
+
+    #[test]
+    fn swap_direction_preserved_with_devanagari() {
+        let i = parse("एक सोल स्वैप यूएसडीसी");
+        assert_eq!(i.action, "swap");
+        assert_eq!(i.source.as_deref(), Some("sol"));
+        assert_eq!(i.target.as_deref(), Some("usdc"));
     }
 
     #[test]
