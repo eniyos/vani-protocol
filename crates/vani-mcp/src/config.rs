@@ -8,6 +8,9 @@ pub struct Config {
     pub rpc_url: String,
     /// Optional demo address used when a tool's address field is left empty.
     pub default_address: Option<String>,
+    /// Sarvam AI API subscription key (voice STT/TTS). Read-only use per
+    /// request — never logged or stored anywhere else.
+    pub sarvam_api_key: Option<String>,
 }
 
 impl Config {
@@ -18,9 +21,13 @@ impl Config {
         let default_address = std::env::var("VANI_DEFAULT_ADDRESS")
             .ok()
             .filter(|s| !s.trim().is_empty());
+        let sarvam_api_key = std::env::var("SARVAM_API_KEY")
+            .ok()
+            .filter(|s| !s.trim().is_empty());
         Ok(Self {
             rpc_url,
             default_address,
+            sarvam_api_key,
         })
     }
 }

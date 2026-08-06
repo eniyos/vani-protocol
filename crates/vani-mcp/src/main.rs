@@ -5,6 +5,7 @@
 mod config;
 mod jupiter;
 mod rpc;
+mod sarvam;
 mod server;
 mod vanicommand;
 
@@ -14,6 +15,8 @@ use rmcp::{transport::stdio, ServiceExt};
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
+        // MCP speaks JSON-RPC over stdout — keep logs off the protocol stream.
+        .with_writer(std::io::stderr)
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
                 .unwrap_or_else(|_| "info".into()),

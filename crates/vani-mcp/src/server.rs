@@ -7,6 +7,7 @@ use serde::Deserialize;
 use crate::config::Config;
 use crate::jupiter;
 use crate::rpc::SolanaRpc;
+use crate::sarvam;
 use crate::vanicommand;
 
 /// System-program public key (all-zero base58) — a valid pubkey whose balance
@@ -18,6 +19,9 @@ pub struct VaniServer {
     rpc: SolanaRpc,
     http: reqwest::Client,
     default_address: Option<String>,
+    /// Sarvam API key for the voice tools (`tts_speak`, `stt_transcribe`).
+    /// Held only in memory; used per-request, never logged.
+    sarvam_key: Option<String>,
 }
 
 impl VaniServer {
@@ -28,6 +32,7 @@ impl VaniServer {
             rpc,
             http: reqwest::Client::new(),
             default_address: config.default_address,
+            sarvam_key: config.sarvam_api_key,
         })
     }
 
@@ -83,6 +88,39 @@ pub struct VaniCommandParams {
     pub text: String,
 }
 
+fn default_language() -> String {
+    "hi-IN".to_string()
+}
+
+fn default_speaker() -> String {
+    "shubh".to_string()
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct TtsParams {
+    /// Text to speak, in the target language (≤2,500 chars).
+    pub text: String,
+    /// BCP-47 language code (default hi-IN).
+    #[serde(default = "default_language")]
+    pub language: String,
+    /// Sarvam voice name (default shubh). Female: roopa, priya, …
+    #[serde(default = "default_speaker")]
+    pub speaker: String,
+}
+
+fn default_unknown_language() -> String {
+    "unknown".to_string()
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SttParams {
+    /// Base64-encoded audio (WAV/MP3/OGG, ≤30 s, 16 kHz mono preferred).
+    pub audio_base64: String,
+    /// Expected BCP-47 language code, or "unknown" for auto-detect.
+    #[serde(default = "default_unknown_language")]
+    pub language: String,
+}
+
 // ---- the tools ----
 
 #[tool_router(server_handler)]
@@ -125,5 +163,27 @@ impl VaniServer {
     fn vani_command(&self, Parameters(VaniCommandParams { text }): Parameters<VaniCommandParams>) -> String {
         let intent = vanicommand::parse(&text);
         serde_json::to_string_pretty(&intent).unwrap_or_else(|_| format!("{intent:?}"))
+    }
+
+    #[tool(description = "Synthesize speech from text via Sarvam AI TTS (bulbul:v3). Returns base64-encoded WAV audio.")]
+    async fn tts_speak(&self, Parameters(TtsParams { text, language, speaker }): Parameters<TtsParams>) -> String {
+        let Some(key) = self.sarvam_key.as_deref() else {
+            return "Error: SARVAM_API_KEY not set in environment".to_string();
+        };
+        match sarvam::text_to_speech(&self.http, key, &text, &language, &speaker).await {
+            Ok(audio) => audio,
+            Err(e) => format!("Error: {e}"),
+        }
+    }
+
+    #[tool(description = "Transcribe base64-encoded audio to text via Sarvam AI STT (saaras:v3). Returns '[detected-language] transcript'.")]
+    async fn stt_transcribe(&self, Parameters(SttParams { audio_base64, language }): Parameters<SttParams>) -> String {
+        let Some(key) = self.sarvam_key.as_deref() else {
+            return "Error: SARVAM_API_KEY not set in environment".to_string();
+        };
+        match sarvam::speech_to_text(&self.http, key, &audio_base64, &language).await {
+            Ok(out) => out,
+            Err(e) => format!("Error: {e}"),
+        }
     }
 }
