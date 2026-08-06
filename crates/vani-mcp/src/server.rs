@@ -30,7 +30,11 @@ impl VaniServer {
         let rpc = SolanaRpc::new(config.rpc_url)?;
         Ok(Self {
             rpc,
-            http: reqwest::Client::new(),
+            http: reqwest::Client::builder()
+                // Jupiter + Sarvam calls: cap so a hung upstream can't stall a
+                // voice round-trip forever (30s also covers a full 30s-audio STT).
+                .timeout(std::time::Duration::from_secs(30))
+                .build()?,
             default_address: config.default_address,
             sarvam_key: config.sarvam_api_key,
         })
@@ -126,64 +130,58 @@ pub struct SttParams {
 #[tool_router(server_handler)]
 impl VaniServer {
     #[tool(description = "Get the SOL balance of a Solana address (lamports -> SOL). Leave address empty to use the configured default.")]
-    async fn get_balance(&self, Parameters(BalanceParams { address }): Parameters<BalanceParams>) -> String {
+    async fn get_balance(&self, Parameters(BalanceParams { address }): Parameters<BalanceParams>) -> Result<String, String> {
         let addr = self.resolve_address(&address);
         match self.rpc.sol_balance(&addr).await {
-            Ok(lamports) => format!("{addr}: {:.6} SOL ({lamports} lamports)", lamports as f64 / 1e9),
-            Err(e) => format!("Error: {e}"),
+            Ok(lamports) => Ok(format!("{addr}: {:.6} SOL ({lamports} lamports)", lamports as f64 / 1e9)),
+            Err(e) => Err(format!("Error: {e}")),
         }
     }
 
-    #[tool(description = "Get the SPL token balance (smallest units) held by an address for a token mint.")]
-    async fn get_token_balance(&self, Parameters(TokenBalanceParams { address, mint }): Parameters<TokenBalanceParams>) -> String {
+    #[tool(description = "Get the SPL token balance for an address + mint, as a human amount plus raw smallest units.")]
+    async fn get_token_balance(&self, Parameters(TokenBalanceParams { address, mint }): Parameters<TokenBalanceParams>) -> Result<String, String> {
         let addr = self.resolve_address(&address);
         match self.rpc.token_balance(&addr, &mint).await {
-            Ok(units) => format!("{addr}: {units} smallest units of {mint}"),
-            Err(e) => format!("Error: {e}"),
+            Ok(b) => Ok(format!("{addr}: {:.6} of {mint} ({} raw units)", b.ui_amount(), b.raw)),
+            Err(e) => Err(format!("Error: {e}")),
         }
     }
 
     #[tool(description = "Get a live token price from the Jupiter price API (SOL, USDC, USDT, BONK, JUP; comma-separate multiple symbols).")]
-    async fn get_price(&self, Parameters(PriceParams { symbol }): Parameters<PriceParams>) -> String {
-        match jupiter::price(&self.http, &symbol).await {
-            Ok(out) => out,
-            Err(e) => format!("Error: {e}"),
-        }
+    async fn get_price(&self, Parameters(PriceParams { symbol }): Parameters<PriceParams>) -> Result<String, String> {
+        jupiter::price(&self.http, &symbol).await.map_err(|e| format!("Error: {e}"))
     }
 
     #[tool(description = "Get a Jupiter swap quote (read-only, nothing is executed). Amount is in the input token's smallest unit.")]
-    async fn jupiter_quote(&self, Parameters(QuoteParams { input_mint, output_mint, amount }): Parameters<QuoteParams>) -> String {
-        match jupiter::quote(&self.http, &input_mint, &output_mint, amount).await {
-            Ok(out) => out,
-            Err(e) => format!("Error: {e}"),
-        }
+    async fn jupiter_quote(&self, Parameters(QuoteParams { input_mint, output_mint, amount }): Parameters<QuoteParams>) -> Result<String, String> {
+        jupiter::quote(&self.http, &input_mint, &output_mint, amount)
+            .await
+            .map_err(|e| format!("Error: {e}"))
     }
 
     #[tool(description = "Parse a Hindi/Hinglish/Telugu/Tamil/English command into a structured intent (MVP rule-based parser).")]
-    fn vani_command(&self, Parameters(VaniCommandParams { text }): Parameters<VaniCommandParams>) -> String {
+    fn vani_command(&self, Parameters(VaniCommandParams { text }): Parameters<VaniCommandParams>) -> Result<String, String> {
         let intent = vanicommand::parse(&text);
-        serde_json::to_string_pretty(&intent).unwrap_or_else(|_| format!("{intent:?}"))
+        Ok(serde_json::to_string_pretty(&intent).unwrap_or_else(|_| format!("{intent:?}")))
     }
 
     #[tool(description = "Synthesize speech from text via Sarvam AI TTS (bulbul:v3). Returns base64-encoded WAV audio.")]
-    async fn tts_speak(&self, Parameters(TtsParams { text, language, speaker }): Parameters<TtsParams>) -> String {
+    async fn tts_speak(&self, Parameters(TtsParams { text, language, speaker }): Parameters<TtsParams>) -> Result<String, String> {
         let Some(key) = self.sarvam_key.as_deref() else {
-            return "Error: SARVAM_API_KEY not set in environment".to_string();
+            return Err("Error: SARVAM_API_KEY not set in environment".to_string());
         };
-        match sarvam::text_to_speech(&self.http, key, &text, &language, &speaker).await {
-            Ok(audio) => audio,
-            Err(e) => format!("Error: {e}"),
-        }
+        sarvam::text_to_speech(&self.http, key, &text, &language, &speaker)
+            .await
+            .map_err(|e| format!("Error: {e}"))
     }
 
     #[tool(description = "Transcribe base64-encoded audio to text via Sarvam AI STT (saaras:v3). Returns '[detected-language] transcript'.")]
-    async fn stt_transcribe(&self, Parameters(SttParams { audio_base64, language }): Parameters<SttParams>) -> String {
+    async fn stt_transcribe(&self, Parameters(SttParams { audio_base64, language }): Parameters<SttParams>) -> Result<String, String> {
         let Some(key) = self.sarvam_key.as_deref() else {
-            return "Error: SARVAM_API_KEY not set in environment".to_string();
+            return Err("Error: SARVAM_API_KEY not set in environment".to_string());
         };
-        match sarvam::speech_to_text(&self.http, key, &audio_base64, &language).await {
-            Ok(out) => out,
-            Err(e) => format!("Error: {e}"),
-        }
+        sarvam::speech_to_text(&self.http, key, &audio_base64, &language)
+            .await
+            .map_err(|e| format!("Error: {e}"))
     }
 }

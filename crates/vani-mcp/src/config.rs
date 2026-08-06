@@ -18,12 +18,16 @@ impl Config {
         dotenvy::dotenv().ok();
         let rpc_url = std::env::var("RPC_URL")
             .unwrap_or_else(|_| "https://api.devnet.solana.com".to_string());
+        // Trim env values: accidental trailing whitespace/newlines would make a
+        // base58 address invalid and a Sarvam key silently 403.
         let default_address = std::env::var("VANI_DEFAULT_ADDRESS")
             .ok()
-            .filter(|s| !s.trim().is_empty());
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
         let sarvam_api_key = std::env::var("SARVAM_API_KEY")
             .ok()
-            .filter(|s| !s.trim().is_empty());
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
         Ok(Self {
             rpc_url,
             default_address,

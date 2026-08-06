@@ -1,5 +1,7 @@
 //! Minimal Solana JSON-RPC client over any configured endpoint (reqwest).
 
+use std::time::Duration;
+
 use anyhow::{bail, Context, Result};
 use reqwest::Client;
 use serde_json::{json, Value};
@@ -13,7 +15,12 @@ pub struct SolanaRpc {
 
 impl SolanaRpc {
     pub fn new(url: String) -> Result<Self> {
-        let client = Client::builder().build()?;
+        let client = Client::builder()
+            // Public Solana RPCs can stall; a hung request must not block the
+            // MCP server indefinitely (project latency budget is <2s).
+            .timeout(Duration::from_secs(15))
+            .connect_timeout(Duration::from_secs(5))
+            .build()?;
         Ok(Self { client, url })
     }
 
@@ -47,8 +54,9 @@ impl SolanaRpc {
             .context("getBalance returned no lamport value")
     }
 
-    /// SPL token balance (smallest units) for an owner + mint, summed across accounts.
-    pub async fn token_balance(&self, owner: &str, mint: &str) -> Result<u64> {
+    /// SPL token balance for an owner + mint, summed across accounts.
+    /// Raw is smallest units; `decimals` lets callers show a human amount.
+    pub async fn token_balance(&self, owner: &str, mint: &str) -> Result<TokenBalance> {
         let result = self
             .call(
                 "getTokenAccountsByOwner",
@@ -66,15 +74,36 @@ impl SolanaRpc {
             .cloned()
             .unwrap_or_default();
 
-        let total: u64 = accounts
-            .iter()
-            .filter_map(|acc| {
-                acc.pointer("/account/data/parsed/info/tokenAmount/amount")
-                    .and_then(Value::as_str)
-                    .and_then(|s| s.parse::<u64>().ok())
-            })
-            .sum();
+        let mut raw: u64 = 0;
+        let mut decimals: u8 = 0;
+        for acc in &accounts {
+            raw += acc
+                .pointer("/account/data/parsed/info/tokenAmount/amount")
+                .and_then(Value::as_str)
+                .and_then(|s| s.parse::<u64>().ok())
+                .unwrap_or(0);
+            if let Some(d) = acc
+                .pointer("/account/data/parsed/info/tokenAmount/decimals")
+                .and_then(Value::as_u64)
+            {
+                decimals = d as u8;
+            }
+        }
+        Ok(TokenBalance { raw, decimals })
+    }
+}
 
-        Ok(total)
+/// A token balance: raw smallest units plus the mint's decimals, so callers
+/// can present a human-readable amount instead of an opaque raw count.
+#[derive(Debug, Clone, Copy)]
+pub struct TokenBalance {
+    pub raw: u64,
+    pub decimals: u8,
+}
+
+impl TokenBalance {
+    /// Human-readable amount (raw / 10^decimals).
+    pub fn ui_amount(&self) -> f64 {
+        self.raw as f64 / 10f64.powi(self.decimals as i32)
     }
 }
