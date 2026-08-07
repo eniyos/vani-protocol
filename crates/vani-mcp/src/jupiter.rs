@@ -24,17 +24,17 @@ fn symbol_to_mint(symbol: &str) -> Option<&'static str> {
 }
 
 /// Live price for one or more symbols (comma-separated). Jupiter Price API v3.
+/// Output is in the caller's symbol order (with duplicates dropped), so a voice
+/// reply reads back the tokens the user asked for in the order they asked.
 pub async fn price(client: &Client, symbols: &str) -> Result<String> {
-    let mints: Vec<&str> = symbols
-        .split(',')
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(|s| {
-            symbol_to_mint(s)
-                .context("get_price supports only SOL, USDC, USDT, BONK, JUP")
-        })
-        .collect::<Result<Vec<_>>>()?;
-
+    let mut mints: Vec<&str> = Vec::new();
+    for s in symbols.split(',').map(str::trim).filter(|s| !s.is_empty()) {
+        let mint = symbol_to_mint(s)
+            .context("get_price supports only SOL, USDC, USDT, BONK, JUP")?;
+        if !mints.contains(&mint) {
+            mints.push(mint);
+        }
+    }
     if mints.is_empty() {
         bail!("no symbols given");
     }
@@ -55,8 +55,9 @@ pub async fn price(client: &Client, symbols: &str) -> Result<String> {
     }
 
     let mut lines = Vec::new();
-    for (mint, info) in data {
-        let symbol = match mint.as_str() {
+    for &mint in &mints {
+        let info = data.get(mint).context("price data missing for a requested symbol")?;
+        let symbol = match mint {
             SOL => "SOL",
             USDC => "USDC",
             USDT => "USDT",
