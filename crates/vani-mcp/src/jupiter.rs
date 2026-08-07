@@ -12,7 +12,8 @@ pub const JUP: &str = "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN";
 
 /// Map a common symbol to its mainnet mint. Kept small on purpose (MVP);
 /// add symbols as integrations land. Keep in sync with the parser's token list.
-fn symbol_to_mint(symbol: &str) -> Option<&'static str> {
+/// Public so the execution layer can resolve a parser's token symbol to a mint.
+pub fn symbol_to_mint(symbol: &str) -> Option<&'static str> {
     match symbol.trim().to_ascii_uppercase().as_str() {
         "SOL" | "WSOL" | "WRAPPED_SOL" => Some(SOL),
         "USDC" => Some(USDC),

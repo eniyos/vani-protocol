@@ -67,6 +67,31 @@ impl SolanaRpc {
             .context("getLatestBlockhash returned no blockhash")
     }
 
+    /// Decimals for an SPL mint (from `getTokenSupply`). Needed to convert a
+    /// human token amount (e.g. "2 USDC") into raw smallest units.
+    pub async fn token_decimals(&self, mint: &str) -> Result<u8> {
+        let result = self
+            .call("getTokenSupply", json!([mint, { "commitment": "confirmed" }]))
+            .await?;
+        result
+            .pointer("/value/decimals")
+            .and_then(Value::as_u64)
+            .map(|d| d as u8)
+            .context("getTokenSupply returned no decimals")
+    }
+
+    /// Whether a specific account exists on chain (used to check the recipient's
+    /// associated token account before building a transfer).
+    pub async fn account_exists(&self, address: &str) -> Result<bool> {
+        let result = self
+            .call(
+                "getAccountInfo",
+                json!([address, { "commitment": "confirmed", "encoding": "base64" }]),
+            )
+            .await?;
+        Ok(!result.get("value").map(Value::is_null).unwrap_or(true))
+    }
+
     /// SPL token balance for an owner + mint, summed across accounts.
     /// Raw is smallest units; `decimals` lets callers show a human amount.
     pub async fn token_balance(&self, owner: &str, mint: &str) -> Result<TokenBalance> {

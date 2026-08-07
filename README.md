@@ -9,9 +9,9 @@ Hindi, Telugu, Tamil, and more — **without any private keys**.
 The core idea: India's next 100M crypto users won't use English-first interfaces. Vani is the layer
 that lets them *speak*, on chain, securely (MPC signing comes in Week 3).
 
-> Status: **Weeks 1–3 complete (2026-08-07).** Read-only MCP tools over stdio, a live Sarvam AI
-> voice layer (STT/TTS), and **Turnkey TEE signing** — native-SOL sends signed off-process, so no
-> wallet key ever touches Vani. Token/swap execution and grant docs land in Weeks 3.5–4. This is the
+> Status: **Weeks 1–3.5 (2026-08-08).** Read-only MCP tools over stdio, a live Sarvam AI
+> voice layer (STT/TTS), and **Turnkey TEE signing** — native-SOL **and** SPL-token sends signed
+> off-process, so no wallet key ever touches Vani. On-chain swap execution and grant docs land in Weeks 3.5–4. This is the
 > project's codebase — for the knowledge base that tracks design, decisions, and roadmap, see the
 > [Vani-Protocol-brain](https://github.com/eniyos/Vani-Protocol-brain) repo.
 
@@ -55,7 +55,7 @@ The server speaks MCP over **stdio**. Point any MCP-capable agent at it:
 | `tts_speak`         | Text → speech (Sarvam `bulbul:v3`), returns base64 WAV |
 | `stt_transcribe`    | Audio → text (Sarvam `saaras:v3`), returns `[language] transcript` |
 | `turnkey_create_wallet` | Provision a Solana wallet in Turnkey's TEE; returns wallet id + address |
-| `vani_execute`      | Send native SOL (vernacular `"5 SOL bhej do"`), signed in Turnkey's TEE — no key touches Vani |
+| `vani_execute`      | Send native SOL or an SPL token (USDC/USDT/BONK/JUP), signed in Turnkey's TEE — no key touches Vani |
 
 ## Configuration
 
@@ -79,7 +79,7 @@ Keep `.env` out of git (it already is).
 - **Wk 1 ✓:** read-only Rust MCP server over stdio, vernacular command parser (27 tests).
 - **Wk 2 ✓:** Sarvam AI STT/TTS voice layer (pulled forward to 08-06) + cross-language commands (32 tests).
 - **Wk 3 ✓:** Turnkey TEE signing → `vani_execute` native-SOL sends (Knot Wallet verified un-integrable — dormant, unlicensed, API down — and is itself a Turnkey wrapper; see ADR-007 in the brain). SECURITY.md shipped.
-- **Wk 3.5:** SPL-token transfer + on-chain Jupiter swap execution.
+- **Wk 3.5 (in progress 08-08):** SPL-token transfer live — `vani_execute` now sends USDC/USDT/BONK/JUP via `TransferChecked` between associated token accounts (45 tests). On-chain Jupiter swap execution is the next slice.
 - **Wk 4:** beta users, landing page, Superteam India grant.
 
 ## License
