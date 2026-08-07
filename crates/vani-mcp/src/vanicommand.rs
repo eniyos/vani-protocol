@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Intent {
-    /// Detected action: `swap` | `balance` | `price` | `unknown`.
+    /// Detected action: `swap` | `send` | `balance` | `price` | `unknown`.
     pub action: String,
     /// First token mentioned, if any.
     pub source: Option<String>,
@@ -129,6 +129,15 @@ fn detect_action(lower: &str) -> &'static str {
         ],
     ) {
         "swap"
+    } else if contains_any(
+        lower,
+        &[
+            "send", "transfer", "bhej", "भेज", "पाठ", // Hinglish + Hindi: send / transfer
+            "పంప", "పంపు", // Telugu: send
+            "அனுப்பு", "அனுப்ப", // Tamil: send
+        ],
+    ) {
+        "send"
     } else if contains_any(
         lower,
         &[
@@ -291,6 +300,39 @@ mod tests {
         assert_eq!(i.action, "balance"); // "karo" isn't swap; balance wins
         assert_eq!(i.amount, Some(10.0));
         assert_eq!(i.source.as_deref(), Some("sol"));
+    }
+
+    #[test]
+    fn send_in_hindi() {
+        let i = parse("पांच सोल भेजो");
+        assert_eq!(i.action, "send");
+        assert_eq!(i.amount, Some(5.0));
+        assert_eq!(i.source.as_deref(), Some("sol"));
+    }
+
+    #[test]
+    fn send_in_hinglish() {
+        let i = parse("send 2.5 SOL");
+        assert_eq!(i.action, "send");
+        assert_eq!(i.amount, Some(2.5));
+        assert_eq!(i.source.as_deref(), Some("sol"));
+    }
+
+    #[test]
+    fn send_in_telugu() {
+        // Telugu send keyword with a Latin token + ASCII digit (token names are
+        // Latin/Devanagari only in the MVP parser).
+        let i = parse("2 SOL పంపు");
+        assert_eq!(i.action, "send");
+        assert_eq!(i.amount, Some(2.0));
+        assert_eq!(i.source.as_deref(), Some("sol"));
+    }
+
+    #[test]
+    fn swap_is_not_send() {
+        // Swap keywords must win over send keywords when both could apply.
+        let i = parse("1 SOL send karo USDC mein swap");
+        assert_eq!(i.action, "swap");
     }
 
     #[test]

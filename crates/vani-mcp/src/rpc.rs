@@ -54,6 +54,19 @@ impl SolanaRpc {
             .context("getBalance returned no lamport value")
     }
 
+    /// Latest confirmed blockhash (for building transactions). Returns the
+    /// base58 blockhash string.
+    pub async fn latest_blockhash(&self) -> Result<String> {
+        let result = self
+            .call("getLatestBlockhash", json!([{ "commitment": "confirmed" }]))
+            .await?;
+        result
+            .pointer("/value/blockhash")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+            .context("getLatestBlockhash returned no blockhash")
+    }
+
     /// SPL token balance for an owner + mint, summed across accounts.
     /// Raw is smallest units; `decimals` lets callers show a human amount.
     pub async fn token_balance(&self, owner: &str, mint: &str) -> Result<TokenBalance> {

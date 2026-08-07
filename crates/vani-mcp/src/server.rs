@@ -5,9 +5,11 @@ use rmcp::{handler::server::wrapper::Parameters, schemars, tool, tool_router};
 use serde::Deserialize;
 
 use crate::config::Config;
+use crate::execute;
 use crate::jupiter;
 use crate::rpc::SolanaRpc;
 use crate::sarvam;
+use crate::turnkey::TurnkeyClient;
 use crate::vanicommand;
 
 /// System-program public key (32 bytes, base58) — a valid pubkey whose balance
@@ -22,21 +24,43 @@ pub struct VaniServer {
     /// Sarvam API key for the voice tools (`tts_speak`, `stt_transcribe`).
     /// Held only in memory; used per-request, never logged.
     sarvam_key: Option<String>,
+    /// Turnkey TEE signing client (Week 3). None when the `TURNKEY_*` env vars
+    /// are unset — the execution tools then return a clear "not configured"
+    /// error. Wallet keys never exist in Vani.
+    turnkey: Option<TurnkeyClient>,
+    /// CAIP-2 chain id for `vani_execute` (defaults to devnet).
+    execute_network: String,
+    /// Derived Solana address of the Turnkey wallet (signer + fee payer).
+    turnkey_sol_wallet: Option<String>,
 }
 
 impl VaniServer {
     pub fn from_env() -> anyhow::Result<Self> {
         let config = Config::from_env()?;
         let rpc = SolanaRpc::new(config.rpc_url)?;
+        // Jupiter + Sarvam + Turnkey calls: cap so a hung upstream can't stall a
+        // voice round-trip forever (30s also covers a full 30s-audio STT).
+        let http = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()?;
         Ok(Self {
             rpc,
-            http: reqwest::Client::builder()
-                // Jupiter + Sarvam calls: cap so a hung upstream can't stall a
-                // voice round-trip forever (30s also covers a full 30s-audio STT).
-                .timeout(std::time::Duration::from_secs(30))
-                .build()?,
+            http: http.clone(),
             default_address: config.default_address,
             sarvam_key: config.sarvam_api_key,
+            // Turnkey needs all three creds; anything missing ⇒ execution disabled.
+            turnkey: match (
+                config.turnkey_org,
+                config.turnkey_api_public,
+                config.turnkey_api_private,
+            ) {
+                (Some(org), Some(pub_key), Some(priv_key)) => {
+                    Some(TurnkeyClient::new(http, org, pub_key, priv_key)?)
+                }
+                _ => None,
+            },
+            execute_network: config.execute_network,
+            turnkey_sol_wallet: config.turnkey_sol_wallet,
         })
     }
 
@@ -125,6 +149,25 @@ pub struct SttParams {
     pub language: String,
 }
 
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct CreateWalletParams {
+    /// Human-readable name for the new Turnkey wallet.
+    pub name: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ExecuteParams {
+    /// The vernacular command text, e.g. "5 SOL bhej do" (send / transfer /
+    /// भेजो / పంపు / அனுப்பு …).
+    pub text: String,
+    /// Recipient Solana address (base58).
+    pub to: String,
+    /// Optional explicit SOL amount. If omitted, the amount parsed from `text`
+    /// is used.
+    #[serde(default)]
+    pub amount: Option<f64>,
+}
+
 // ---- the tools ----
 
 #[tool_router(server_handler)]
@@ -181,6 +224,33 @@ impl VaniServer {
             return Err("Error: SARVAM_API_KEY not set in environment".to_string());
         };
         sarvam::speech_to_text(&self.http, key, &audio_base64, &language)
+            .await
+            .map_err(|e| format!("Error: {e}"))
+    }
+
+    #[tool(description = "Provision a new Solana wallet in Turnkey (TEE custody). Returns the wallet id + derived address; save the address as TURNKEY_SOLANA_WALLET_ADDRESS for vani_execute.")]
+    async fn turnkey_create_wallet(&self, Parameters(CreateWalletParams { name }): Parameters<CreateWalletParams>) -> Result<String, String> {
+        let Some(tk) = self.turnkey.as_ref() else {
+            return Err("Error: TURNKEY_* not configured (TURNKEY_ORGANIZATION_ID + API public/private key)".to_string());
+        };
+        match tk.create_wallet(&name).await {
+            Ok(w) => Ok(format!(
+                "Turnkey wallet created\n  id: {}\n  address: {}\n\nSet TURNKEY_SOLANA_WALLET_ADDRESS={} to use it with vani_execute.",
+                w.wallet_id, w.address, w.address
+            )),
+            Err(e) => Err(format!("Error: {e}")),
+        }
+    }
+
+    #[tool(description = "Send a native SOL transfer signed by Turnkey's TEE — keys never touch Vani. MVP: SOL sends only (token/swap execution next). Amount from the text or the amount param.")]
+    async fn vani_execute(&self, Parameters(ExecuteParams { text, to, amount }): Parameters<ExecuteParams>) -> Result<String, String> {
+        let Some(tk) = self.turnkey.as_ref() else {
+            return Err("Error: TURNKEY_* not configured (TURNKEY_ORGANIZATION_ID + API public/private key)".to_string());
+        };
+        let Some(signer) = self.turnkey_sol_wallet.as_deref() else {
+            return Err("Error: TURNKEY_SOLANA_WALLET_ADDRESS not set — run turnkey_create_wallet and save the address".to_string());
+        };
+        execute::execute(&self.rpc, tk, signer, &to, amount, &text, &self.execute_network)
             .await
             .map_err(|e| format!("Error: {e}"))
     }

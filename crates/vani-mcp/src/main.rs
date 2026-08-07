@@ -3,10 +3,12 @@
 //! Speaks MCP over stdio. Tools are defined in [`server`].
 
 mod config;
+mod execute;
 mod jupiter;
 mod rpc;
 mod sarvam;
 mod server;
+mod turnkey;
 mod vanicommand;
 
 use anyhow::Result;
