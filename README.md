@@ -11,7 +11,10 @@ that lets them *speak*, on chain, securely (MPC signing comes in Week 3).
 
 > Status: **Weeks 1–3.5 (2026-08-08).** Read-only MCP tools over stdio, a live Sarvam AI
 > voice layer (STT/TTS), and **Turnkey TEE signing** — native-SOL **and** SPL-token sends signed
-> off-process, so no wallet key ever touches Vani. On-chain swap execution and grant docs land in Weeks 3.5–4. This is the
+> off-process, so no wallet key ever touches Vani. The execution layer is unit-tested (45 tests)
+> but not yet broadcast to a real chain; `scripts/e2e_week3.sh` funds a devnet wallet by address
+> and drives one real `vani_execute` once the Turnkey creds are in `.env`. On-chain swap execution
+> is queued behind that live proof. This is the
 > project's codebase — for the knowledge base that tracks design, decisions, and roadmap, see the
 > [Vani-Protocol-brain](https://github.com/eniyos/Vani-Protocol-brain) repo.
 
@@ -79,7 +82,7 @@ Keep `.env` out of git (it already is).
 - **Wk 1 ✓:** read-only Rust MCP server over stdio, vernacular command parser (27 tests).
 - **Wk 2 ✓:** Sarvam AI STT/TTS voice layer (pulled forward to 08-06) + cross-language commands (32 tests).
 - **Wk 3 ✓:** Turnkey TEE signing → `vani_execute` native-SOL sends (Knot Wallet verified un-integrable — dormant, unlicensed, API down — and is itself a Turnkey wrapper; see ADR-007 in the brain). SECURITY.md shipped.
-- **Wk 3.5 (in progress 08-08):** SPL-token transfer live — `vani_execute` now sends USDC/USDT/BONK/JUP via `TransferChecked` between associated token accounts (45 tests). On-chain Jupiter swap execution is the next slice.
+- **Wk 3.5 (in progress 08-08):** SPL-token transfer live — `vani_execute` now sends USDC/USDT/BONK/JUP via `TransferChecked` between associated token accounts (45 tests). `scripts/e2e_week3.sh` proves SOL+token sends on real devnet once Turnkey creds are in `.env`. On-chain Jupiter swap execution is queued **behind that live proof** — the v0-address-lookup assembly needs a funded wallet to validate against.
 - **Wk 4:** beta users, landing page, Superteam India grant.
 
 ## License
