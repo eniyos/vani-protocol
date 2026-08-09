@@ -67,8 +67,8 @@ pub fn transfer_checked_ix(
 
 /// Build an unsigned native-SOL transfer transaction for Turnkey to sign.
 /// `from` is the fee payer + signer (the Turnkey wallet address). Returns the
-/// serialized wire format as hex — signatures are zeroed (unsigned), exactly
-/// what Turnkey's `sol_send_transaction` expects.
+/// serialized wire format as hex — signatures are zeroized (unsigned), exactly
+/// what Turnkey's `sign_transaction` expects.
 pub async fn build_transfer_hex(
     rpc: &SolanaRpc,
     from: &str,
@@ -192,12 +192,13 @@ pub async fn execute(
     }
 
     let unsigned_hex = build_transfer_hex(rpc, signer, to, lamports).await?;
-    let sig = turnkey
-        .send_sol_transaction(&unsigned_hex, signer, caip2)
-        .await?;
+    // Sign in the TEE, broadcast via our own RPC — avoids the org-gated
+    // `SolSendTransaction` broadcast service while keeping keys out of Vani.
+    let signed = turnkey.sign_transaction(&unsigned_hex, signer).await?;
+    let sig = rpc.send_transaction(&signed).await?;
 
     Ok(format!(
-        "sent {sol} SOL to {to} · signature {sig} · {caip2} (signed in Turnkey TEE — no key touched Vani)"
+        "sent {sol} SOL to {to} · signature {sig} · {caip2} (signed in Turnkey TEE, broadcast via RPC — no key touched Vani)"
     ))
 }
 
@@ -238,12 +239,12 @@ async fn execute_token(
     }
 
     let unsigned_hex = build_token_transfer_hex(rpc, signer, to, mint, raw, decimals).await?;
-    let sig = turnkey
-        .send_sol_transaction(&unsigned_hex, signer, caip2)
-        .await?;
+    // Sign in the TEE, broadcast via our own RPC (same rationale as the SOL path).
+    let signed = turnkey.sign_transaction(&unsigned_hex, signer).await?;
+    let sig = rpc.send_transaction(&signed).await?;
 
     Ok(format!(
-        "sent {ui} {sym} to {to} · signature {sig} · {caip2} (signed in Turnkey TEE — no key touched Vani)"
+        "sent {ui} {sym} to {to} · signature {sig} · {caip2} (signed in Turnkey TEE, broadcast via RPC — no key touched Vani)"
     ))
 }
 

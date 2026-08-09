@@ -3,6 +3,7 @@
 use std::time::Duration;
 
 use anyhow::{bail, Context, Result};
+use base64::Engine;
 use reqwest::Client;
 use serde_json::{json, Value};
 
@@ -52,6 +53,24 @@ impl SolanaRpc {
             .get("value")
             .and_then(Value::as_u64)
             .context("getBalance returned no lamport value")
+    }
+
+    /// Broadcast a signed transaction (wire bytes) and return its base58
+    /// on-chain signature. Used after Turnkey's TEE signs (`sign_transaction`);
+    /// we broadcast ourselves so we don't depend on Turnkey's gated
+    /// `SolSendTransaction` broadcast service.
+    pub async fn send_transaction(&self, signed: &[u8]) -> Result<String> {
+        let encoded = base64::engine::general_purpose::STANDARD.encode(signed);
+        let result = self
+            .call(
+                "sendTransaction",
+                json!([encoded, { "encoding": "base64", "preflightCommitment": "confirmed" }]),
+            )
+            .await?;
+        result
+            .as_str()
+            .map(str::to_string)
+            .context("sendTransaction returned no signature")
     }
 
     /// Latest confirmed blockhash (for building transactions). Returns the

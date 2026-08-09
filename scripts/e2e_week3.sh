@@ -35,16 +35,31 @@ if [ "${#missing[@]}" -gt 0 ]; then
   echo "Turnkey execution isn't wired up yet. Weeks 3–3.5 code is built & unit-tested"
   echo "(45 tests green) but has never touched a real chain. To prove it, do this:"
   echo
-  echo "  1) app.turnkey.com → create a free 'Starter' account (Parent Org)."
-  echo "  2) Create an API key pair (P-256) and an Organization ID."
-  echo "  3) app.turnkey.com → create a Solana wallet; copy its address."
-  echo "  4) In .env set: TURNKEY_ORGANIZATION_ID, TURNKEY_API_PUBLIC_KEY,"
-  echo "     TURNKEY_API_PRIVATE_KEY (the 32-byte hex), TURNKEY_SOLANA_WALLET_ADDRESS,"
+  echo "  1) https://app.turnkey.com → sign up (free 'Starter'). That's your Parent Org;"
+  echo "     copy the Organization ID from the top-left of the dashboard."
+  echo "  2) 'API Keys' → Create API Key → download the pair. Two files drop:"
+  echo "     api_public_key.txt (66 hex chars, starts 02/03) and"
+  echo "     api_private_key.txt (64 hex chars, raw P-256 scalar)."
+  echo "  3) 'Wallets' → Create Wallet → Solana → copy the derived address."
+  echo "  4) In .env set: TURNKEY_ORGANIZATION_ID, TURNKEY_API_PUBLIC_KEY (from the .txt),"
+  echo "     TURNKEY_API_PRIVATE_KEY (from the .txt), TURNKEY_SOLANA_WALLET_ADDRESS,"
   echo "     VANI_EXECUTE_NETWORK=solana:devnet. Keep .env out of git (it is)."
-  echo "  5) Re-run this script."
+  echo "  5) Re-run this script — it funds the wallet and broadcasts a real send."
   echo
   echo "Missing: ${missing[*]}"
   exit 0
+fi
+
+# Format preflight — catches copy-paste mistakes before any network call.
+if ! [[ "$TURNKEY_API_PRIVATE_KEY" =~ ^[0-9a-fA-F]{64}$ ]]; then
+  echo "TURNKEY_API_PRIVATE_KEY must be exactly 64 hex chars (32-byte raw P-256 scalar)."
+  echo "It's the contents of api_private_key.txt — got ${#TURNKEY_API_PRIVATE_KEY} chars."
+  exit 1
+fi
+if ! [[ "$TURNKEY_API_PUBLIC_KEY" =~ ^(02|03)[0-9a-fA-F]{64}$ ]]; then
+  echo "TURNKEY_API_PUBLIC_KEY must be 66 hex chars starting 02 or 03 (compressed P-256)."
+  echo "It's the contents of api_public_key.txt."
+  exit 1
 fi
 
 WALLET="$TURNKEY_SOLANA_WALLET_ADDRESS"
@@ -52,10 +67,23 @@ TO="${VANI_E2E_TO:-11111111111111111111111111111111}"  # devnet sink; set VANI_E
 CLUSTER_URL="${VANI_E2E_URL:-https://api.devnet.solana.com}"
 AMOUNT="${VANI_E2E_AMOUNT:-0.001}"
 
-echo "== Funding Turnkey devnet wallet (address-only airdrop, no key here) =="
+echo "== Ensuring Turnkey devnet wallet is funded =="
 solana config set --url "$CLUSTER_URL" >/dev/null
-if ! solana airdrop 1 "$WALLET" 2>&1 | tail -1; then
-  echo "public faucet unavailable; fund $WALLET manually then re-run."; exit 1
+HAVE=$(solana balance "$WALLET" 2>/dev/null | awk '{print $1}')
+if awk -v b="$HAVE" 'BEGIN{exit !(b > 0.005)}'; then
+  echo "wallet already funded: $HAVE SOL — skipping faucet"
+else
+  echo "funding $WALLET (public faucet; often dry/rate-limited)..."
+  if solana airdrop 1 "$WALLET" 2>&1 | tail -1; then
+    echo "faucet airdrop ok"
+  else
+    echo "faucet unavailable — falling back to the local devnet keypair"
+    if solana transfer "$WALLET" 1 --url "$CLUSTER_URL" --allow-unfunded-recipient 2>&1 | tail -1; then
+      echo "funded from local devnet keypair"
+    else
+      echo "could not fund $WALLET — fund it manually, then re-run."; exit 1
+    fi
+  fi
 fi
 
 echo
@@ -88,7 +116,7 @@ if r.get("isError"):
     raise SystemExit(2)
 print(out)
 import re
-m = re.search(r"signature (\S+)", out)
+m = re.search(r"signature ([A-Za-z0-9]+)", out)
 if m:
     print("\\nExplorer: https://explorer.solana.com/tx/%s?cluster=devnet" % m.group(1))
 proc.kill()

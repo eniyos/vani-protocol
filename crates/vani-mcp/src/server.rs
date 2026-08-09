@@ -242,7 +242,7 @@ impl VaniServer {
         }
     }
 
-    #[tool(description = "Send SOL (native) or an SPL token (USDC/USDT/BONK/JUP) signed by Turnkey's TEE — keys never touch Vani. Amount from the text or the amount param. Swap execution is next.")]
+    #[tool(description = "Send SOL (native) or an SPL token (USDC/USDT/BONK/JUP) signed by Turnkey's TEE and broadcast via RPC — keys never touch Vani. Amount from the text or the amount param. Swap execution is next.")]
     async fn vani_execute(&self, Parameters(ExecuteParams { text, to, amount }): Parameters<ExecuteParams>) -> Result<String, String> {
         let Some(tk) = self.turnkey.as_ref() else {
             return Err("Error: TURNKEY_* not configured (TURNKEY_ORGANIZATION_ID + API public/private key)".to_string());

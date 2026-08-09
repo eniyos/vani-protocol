@@ -2,8 +2,8 @@
 //!
 //! Vani never holds, sees, or transmits a wallet private key: keys live inside
 //! Turnkey's Trusted Execution Environment. We authenticate each request with
-//! an API key (ECDSA P-256 over the exact JSON body) and ask Turnkey to sign a
-//! Solana transaction and broadcast it (`sol_send_transaction`).
+//! an API key (ECDSA P-256 over the exact JSON body) and have Turnkey sign a
+//! Solana transaction; Vani broadcasts the signed transaction via its own RPC.
 //!
 //! Wire protocol (verified against `tkhq/sdk` source):
 //! - Header `X-Stamp: base64url({"publicKey","scheme":"SIGNATURE_SCHEME_TK_API_P256",
@@ -12,7 +12,7 @@
 //!   `{type, timestampMs, organizationId, parameters}`.
 //! - Queries: `POST /public/v1/query/<method>` with the plain params object.
 
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{bail, Context, Result};
 use base64::Engine;
@@ -151,12 +151,12 @@ impl TurnkeyClient {
             .await?;
 
         let wallet_id = resp
-            .pointer("/activity/result/walletId")
+            .pointer("/activity/result/createWalletResult/walletId")
             .and_then(Value::as_str)
             .context("create_wallet activity missing walletId")?
             .to_string();
         let address = resp
-            .pointer("/activity/result/addresses/0")
+            .pointer("/activity/result/createWalletResult/addresses/0")
             .and_then(Value::as_str)
             .context("create_wallet activity missing derived address")?
             .to_string();
@@ -164,53 +164,29 @@ impl TurnkeyClient {
     }
 
     /// Ask Turnkey to sign an unsigned Solana transaction (wire format, hex)
-    /// with `signer` and broadcast it. Returns the on-chain transaction
-    /// signature. Polls the send status a few times for the signature.
-    pub async fn send_sol_transaction(
-        &self,
-        unsigned_transaction_hex: &str,
-        signer: &str,
-        caip2: &str,
-    ) -> Result<String> {
+    /// with `sign_with` (a wallet account address) and return the serialized
+    /// SIGNED transaction bytes. Unlike Turnkey's hosted broadcast service this
+    /// only signs — the caller broadcasts via its own RPC. It uses the core
+    /// `sign_transaction` activity, which (unlike `SolSendTransaction`) is not
+    /// gated by an org feature flag, so it works on a fresh Starter org.
+    pub async fn sign_transaction(&self, unsigned_transaction_hex: &str, sign_with: &str) -> Result<Vec<u8>> {
         let parameters = json!({
+            "signWith": sign_with,
             "unsignedTransaction": unsigned_transaction_hex,
-            "signWiths": [signer],
-            "sponsor": false,
-            "caip2": caip2,
+            "type": "TRANSACTION_TYPE_SOLANA",
         });
         let resp = self
             .post(
-                "/public/v1/submit/sol_send_transaction",
-                &self.submit_body("ACTIVITY_TYPE_SOL_SEND_TRANSACTION_V2", parameters),
+                "/public/v1/submit/sign_transaction",
+                &self.submit_body("ACTIVITY_TYPE_SIGN_TRANSACTION_V2", parameters),
             )
             .await?;
-
-        let status_id = resp
-            .pointer("/activity/result/sendTransactionStatusId")
+        let signed_hex = resp
+            .pointer("/activity/result/signTransactionResult/signedTransaction")
             .and_then(Value::as_str)
-            .context("sol_send_transaction activity missing sendTransactionStatusId")?
+            .context("sign_transaction activity missing signedTransaction")?
             .to_string();
-
-        // Poll the send status until the signature is available or a terminal
-        // failure surfaces (Turnkey broadcasts async; ~2s budget like the rest
-        // of the server).
-        for _ in 0..5 {
-            let query = json!({
-                "organizationId": self.org_id,
-                "sendTransactionStatusId": status_id,
-            });
-            let status = self
-                .post("/public/v1/query/get_send_transaction_status", &query)
-                .await?;
-            if let Some(sig) = status.pointer("/solana/signature").and_then(Value::as_str) {
-                return Ok(sig.to_string());
-            }
-            if let Some(err) = status.get("txError").and_then(Value::as_str) {
-                bail!("transaction broadcast failed: {err}");
-            }
-            tokio::time::sleep(Duration::from_millis(500)).await;
-        }
-        bail!("timed out waiting for Turnkey to broadcast the transaction")
+        hex::decode(signed_hex).context("signed transaction is not valid hex")
     }
 }
 
@@ -270,5 +246,25 @@ mod tests {
         assert_eq!(body["organizationId"], "org-test");
         assert!(body["timestampMs"].is_string());
         assert!(body["parameters"]["walletName"] == "vani");
+    }
+
+    #[test]
+    fn sign_transaction_envelope_shape() {
+        let c = test_client();
+        let body = c.submit_body(
+            "ACTIVITY_TYPE_SIGN_TRANSACTION_V2",
+            json!({
+                "signWith": "F6nmfBfAWsbCK9o7UTec4SicWCXzfezZYB2mhKHSp59T",
+                "unsignedTransaction": "abcdef",
+                "type": "TRANSACTION_TYPE_SOLANA",
+            }),
+        );
+        assert_eq!(body["type"], "ACTIVITY_TYPE_SIGN_TRANSACTION_V2");
+        assert_eq!(body["parameters"]["type"], "TRANSACTION_TYPE_SOLANA");
+        assert_eq!(
+            body["parameters"]["signWith"],
+            "F6nmfBfAWsbCK9o7UTec4SicWCXzfezZYB2mhKHSp59T"
+        );
+        assert_eq!(body["parameters"]["unsignedTransaction"], "abcdef");
     }
 }
