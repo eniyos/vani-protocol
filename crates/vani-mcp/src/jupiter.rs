@@ -2,7 +2,7 @@
 
 use anyhow::{bail, Context, Result};
 use reqwest::Client;
-use serde_json::Value;
+use serde_json::{json, Value};
 
 pub const SOL: &str = "So11111111111111111111111111111111111111112";
 pub const USDC: &str = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
@@ -75,19 +75,27 @@ pub async fn price(client: &Client, symbols: &str) -> Result<String> {
     Ok(lines.join("\n"))
 }
 
-/// Read-only swap quote from the Jupiter Swap API v1. `amount` is in the input
-/// token's smallest unit (lamports for SOL). Returns a human-readable summary.
-pub async fn quote(
+/// Hard cap on Jupiter swap slippage (basis points) for an on-chain swap.
+/// 3% keeps a small swap safe against thin liquidity while still confirming
+/// prompt routes (Jupiter's `otherAmountThreshold` uses the same figure).
+pub const DEFAULT_SLIPPAGE_BPS: u16 = 300;
+
+/// Raw Jupiter quote (full JSON) for a swap: `amount` is in the input token's
+/// smallest unit (lamports for SOL), `slippage_bps` the accepted slippage.
+/// Returns the parsed quote object — the swap endpoints require it verbatim, so
+/// execution calls this and feeds the result straight into [`swap_transaction`].
+pub async fn raw_quote(
     client: &Client,
     input_mint: &str,
     output_mint: &str,
     amount: u64,
-) -> Result<String> {
+    slippage_bps: u16,
+) -> Result<Value> {
     if amount == 0 {
         bail!("amount must be greater than zero");
     }
     let url = format!(
-        "https://api.jup.ag/swap/v1/quote?inputMint={input_mint}&outputMint={output_mint}&amount={amount}"
+        "https://api.jup.ag/swap/v1/quote?inputMint={input_mint}&outputMint={output_mint}&amount={amount}&slippageBps={slippage_bps}"
     );
     let resp: Value = client
         .get(&url)
@@ -100,6 +108,61 @@ pub async fn quote(
     if let Some(err) = resp.get("error") {
         bail!("Jupiter quote error: {err}");
     }
+    if resp
+        .get("routePlan")
+        .and_then(Value::as_array)
+        .map(|r| r.is_empty())
+        .unwrap_or(true)
+    {
+        bail!("Jupiter returned no route between these tokens — no pool has liquidity for them");
+    }
+    Ok(resp)
+}
+
+/// Build a swap through Jupiter's swap API. Given the caller's public key and a
+/// (raw) quote response, returns the `swapTransaction` — a fully-serialized,
+/// base64-encoded **versioned (v0)** transaction whose instructions are already
+/// compiled against Jupiter's address lookup tables. The caller decodes it and
+/// hands the bytes to Turnkey's TEE to sign; the server-side v0 assembly is
+/// Jupiter's job, so we don't re-derive account indexes or lookup tables.
+pub async fn swap_transaction(
+    client: &Client,
+    quote_response: &Value,
+    user_public_key: &str,
+) -> Result<String> {
+    let body = json!({
+        "quoteResponse": quote_response,
+        "userPublicKey": user_public_key,
+        "wrapAndUnwrapSol": true,
+        "dynamicComputeUnitLimit": true,
+        "prioritizationFeeLamports": "auto",
+    });
+    let resp: Value = client
+        .post("https://api.jup.ag/swap/v1/swap")
+        .json(&body)
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    if let Some(err) = resp.get("error") {
+        bail!("Jupiter swap error: {err}");
+    }
+    resp.get("swapTransaction")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .context("Jupiter swap returned no swapTransaction")
+}
+
+/// Read-only swap quote from the Jupiter Swap API v1. `amount` is in the input
+/// token's smallest unit (lamports for SOL). Returns a human-readable summary.
+pub async fn quote(
+    client: &Client,
+    input_mint: &str,
+    output_mint: &str,
+    amount: u64,
+) -> Result<String> {
+    let resp = raw_quote(client, input_mint, output_mint, amount, DEFAULT_SLIPPAGE_BPS).await?;
 
     let out = resp.get("outAmount").and_then(Value::as_str).unwrap_or("?");
     let impact = resp.get("priceImpactPct").and_then(Value::as_str).unwrap_or("?");

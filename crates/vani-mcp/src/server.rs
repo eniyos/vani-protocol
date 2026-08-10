@@ -158,12 +158,13 @@ pub struct CreateWalletParams {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ExecuteParams {
     /// The vernacular command text, e.g. "5 SOL bhej do" (send / transfer /
-    /// भेजो / పంపు / அனுப்பு …).
+    /// भेजो / పంపు / அனுப்பு …) or "1 SOL se USDC swap karo" (swap).
     pub text: String,
-    /// Recipient Solana address (base58).
-    pub to: String,
-    /// Optional explicit SOL amount. If omitted, the amount parsed from `text`
-    /// is used.
+    /// Recipient Solana address (base58). Required for sends; ignored for swaps.
+    #[serde(default)]
+    pub to: Option<String>,
+    /// Optional explicit amount. If omitted, the amount parsed from `text` is
+    /// used.
     #[serde(default)]
     pub amount: Option<f64>,
 }
@@ -242,7 +243,7 @@ impl VaniServer {
         }
     }
 
-    #[tool(description = "Send SOL (native) or an SPL token (USDC/USDT/BONK/JUP) signed by Turnkey's TEE and broadcast via RPC — keys never touch Vani. Amount from the text or the amount param. Swap execution is next.")]
+    #[tool(description = "Execute on-chain: send SOL or an SPL token (USDC/USDT/BONK/JUP) to an address, or swap one for another (e.g. \"1 SOL se USDC swap karo\"). Built locally / by Jupiter, signed by Turnkey's TEE, broadcast via our own RPC — wallet keys never touch Vani. Amount from the text or the amount param.")]
     async fn vani_execute(&self, Parameters(ExecuteParams { text, to, amount }): Parameters<ExecuteParams>) -> Result<String, String> {
         let Some(tk) = self.turnkey.as_ref() else {
             return Err("Error: TURNKEY_* not configured (TURNKEY_ORGANIZATION_ID + API public/private key)".to_string());
@@ -250,7 +251,7 @@ impl VaniServer {
         let Some(signer) = self.turnkey_sol_wallet.as_deref() else {
             return Err("Error: TURNKEY_SOLANA_WALLET_ADDRESS not set — run turnkey_create_wallet and save the address".to_string());
         };
-        execute::execute(&self.rpc, tk, signer, &to, amount, &text, &self.execute_network)
+        execute::execute(&self.rpc, &self.http, tk, signer, to.as_deref(), amount, &text, &self.execute_network)
             .await
             .map_err(|e| format!("Error: {e}"))
     }

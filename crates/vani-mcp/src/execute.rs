@@ -4,6 +4,8 @@
 //! hands the bytes to Turnkey for signing.
 
 use anyhow::{bail, Context, Result};
+use base64::Engine;
+use serde_json::Value;
 use solana_sdk::hash::Hash;
 use solana_sdk::message::Message;
 use solana_sdk::pubkey::Pubkey;
@@ -134,20 +136,22 @@ pub async fn build_token_transfer_hex(
     Ok(hex::encode(bincode::serialize(&tx)?))
 }
 
-/// Execute a vernacular command as a transfer, signed by Turnkey's TEE.
-///
-/// Two paths:
+/// Execute a vernacular command, signed by Turnkey's TEE and broadcast via our
+/// own RPC. Three paths:
+/// - `action == "swap"` → on-chain Jupiter swap (source→target token).
 /// - `source == "sol"` → native-SOL transfer (system program).
 /// - `source` is a known token symbol (USDC/USDT/BONK/JUP) → SPL token
 ///   transfer (`TransferChecked`) between associated token accounts.
 ///
 /// The amount comes from the explicit `amount` param when given, otherwise from
 /// the parsed intent. The signer is the configured Turnkey wallet address.
+#[allow(clippy::too_many_arguments)] // internal plumbing; env deps + per-call params
 pub async fn execute(
     rpc: &SolanaRpc,
+    http: &reqwest::Client,
     turnkey: &TurnkeyClient,
     signer: &str,
-    to: &str,
+    to: Option<&str>,
     amount: Option<f64>,
     text: &str,
     caip2: &str,
@@ -155,12 +159,23 @@ pub async fn execute(
     let intent = vanicommand::parse(text);
 
     if intent.action == "swap" {
-        bail!("swap execution isn't live yet — only sends for now; swap lands in the next slice");
+        // A swap needs both a source and a target token; it ignores `to`.
+        let source = intent.source.as_deref().context(
+            "I couldn't find which token to swap out of — try \"1 SOL se USDC swap karo\"",
+        )?;
+        let target = intent.target.as_deref().context(
+            "I couldn't find which token to swap into — try \"1 SOL se USDC swap karo\"",
+        )?;
+        return execute_swap(
+            rpc, http, turnkey, signer, amount.or(intent.amount), caip2, source, target,
+        )
+        .await;
     }
 
-    // Safety: a send MUST name a known token. If none was detected, fail before
-    // any RPC — an unrecognized symbol ("5 ETH bhej do") must never silently
-    // fall through to the native-SOL path and send the wrong asset.
+    // A send MUST name a recipient and a known token. Fail early on either — an
+    // unrecognized symbol ("5 ETH bhej do") must never silently fall through to
+    // the native-SOL path and send the wrong asset.
+    let to = to.context("I need a wallet address to send to")?;
     let Some(sym) = intent.source.as_deref() else {
         bail!(
             "I couldn't find a token in that command to send — try \"5 SOL bhej do\" or \"2 USDC bhej do\" \
@@ -248,32 +263,146 @@ async fn execute_token(
     ))
 }
 
+/// On-chain Jupiter swap: `source`→`target` token for a human amount. Jupiter
+/// assembles the transaction (a v0 message with address lookup tables) on its
+/// side and returns the serialized bytes; we hand them to Turnkey's TEE to
+/// sign and broadcast via our own RPC — a wallet key never touches Vani.
+#[allow(clippy::too_many_arguments)] // internal plumbing; env deps + per-call params
+async fn execute_swap(
+    rpc: &SolanaRpc,
+    http: &reqwest::Client,
+    turnkey: &TurnkeyClient,
+    signer: &str,
+    amount: Option<f64>,
+    caip2: &str,
+    source_sym: &str,
+    target_sym: &str,
+) -> Result<String> {
+    let input_mint = jupiter::symbol_to_mint(source_sym)
+        .context("unknown source token — I know USDC, USDT, BONK, JUP (SOL is native)")?;
+    let output_mint = jupiter::symbol_to_mint(target_sym)
+        .context("unknown target token — I know USDC, USDT, BONK, JUP (SOL is native)")?;
+    if input_mint == output_mint {
+        bail!("swapping {source_sym} for {target_sym} is a no-op");
+    }
+
+    let ui = amount.context("I need an amount to swap — e.g. \"1 SOL se USDC swap karo\"")?;
+    if ui.is_nan() || ui <= 0.0 {
+        bail!("amount must be a positive number, got {ui}");
+    }
+    let decimals = rpc.token_decimals(input_mint).await?;
+    let raw = (ui * 10f64.powi(decimals as i32)).round() as u64;
+    if raw == 0 {
+        bail!(
+            "amount too small — {ui} {source_sym} is less than one {}-unit",
+            10i64.pow(decimals as u32)
+        );
+    }
+
+    // Safety: the wallet must already hold the token being swapped out (a swap
+    // that funds its own entry is a route bug, not a feature).
+    if source_sym == "sol" {
+        let bal = rpc.sol_balance(signer).await?;
+        if bal < raw + FEE_BUDGET_LAMPORTS {
+            bail!(
+                "insufficient SOL: {bal} lamports available, need ≥{} (swap + fee)",
+                raw + FEE_BUDGET_LAMPORTS
+            );
+        }
+    } else {
+        let held = rpc.token_balance(signer, input_mint).await?;
+        if held.raw < raw {
+            bail!(
+                "insufficient {source_sym}: {:.6} available, need ≥{ui}",
+                held.ui_amount()
+            );
+        }
+    }
+
+    // Quote, then ask Jupiter to assemble the v0 swap transaction for us.
+    let quote =
+        jupiter::raw_quote(http, input_mint, output_mint, raw, jupiter::DEFAULT_SLIPPAGE_BPS).await?;
+    let swap_b64 = jupiter::swap_transaction(http, &quote, signer).await?;
+    let unsigned_bytes = base64::engine::general_purpose::STANDARD
+        .decode(&swap_b64)
+        .context("Jupiter returned invalid base64 for the swap transaction")?;
+    let unsigned_hex = hex::encode(unsigned_bytes);
+
+    // Sign in the TEE, broadcast via our own RPC (same rationale as the sends).
+    let signed = turnkey.sign_transaction(&unsigned_hex, signer).await?;
+    let sig = rpc.send_transaction(&signed).await?;
+
+    let out = quote
+        .get("outAmount")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .unwrap_or_else(|| "?".into());
+    Ok(format!(
+        "swapped {ui} {source_sym} for {out} {target_sym} · signature {sig} · {caip2} \
+         (built by Jupiter, signed in Turnkey TEE, broadcast via RPC — no key touched Vani)"
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    // Versioned-transaction types are exercised only in the v0 wire test, so
+    // they're imported here (not at module top) to keep the binary free of
+    // unused-import warnings.
+    use solana_sdk::message::{v0, VersionedMessage};
+    use solana_sdk::transaction::VersionedTransaction;
 
-    #[test]
-    fn rejects_swap_intent() {
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap();
-        // No network needed: validation fails before any I/O.
-        let rpc = SolanaRpc::new("http://127.0.0.1:1".into()).unwrap();
-        let turnkey = TurnkeyClient::new(
+    /// A Turnkey client that will never reach the network (all tests fail in
+    /// validation before any I/O, so the creds only need to parse).
+    fn test_turnkey() -> TurnkeyClient {
+        TurnkeyClient::new(
             reqwest::Client::new(),
             "org".into(),
             "03".repeat(32),
             "01".repeat(32),
         )
-        .unwrap();
+        .unwrap()
+    }
+
+    /// A SolanaRpc pinned to a dead port — validation fails before any request.
+    fn dead_rpc() -> SolanaRpc {
+        SolanaRpc::new("http://127.0.0.1:1".into()).unwrap()
+    }
+
+    #[test]
+    fn swap_needs_both_tokens_rejected_before_network() {
+        // "USDC swap karo" has no source and no target — must fail with a clear
+        // message BEFORE any network (Jupiter/rpc), and must NOT fall through to
+        // a send.
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
         let err = runtime
             .block_on(execute(
-                &rpc, &turnkey, "11111111111111111111111111111111", "22222222222222222222222222222222",
-                None, "1 SOL USDC mein swap karo", "solana:devnet",
+                &dead_rpc(), &reqwest::Client::new(), &test_turnkey(),
+                "11111111111111111111111111111111", None, None,
+                "swap karo", "solana:devnet",
             ))
             .unwrap_err();
-        assert!(err.to_string().contains("swap execution isn't live"));
+        assert!(err.to_string().contains("which token"), "got: {err}");
+    }
+
+    #[test]
+    fn swap_detects_missing_target_before_network() {
+        // "1 SOL swap karo" detects SOL as source but has no target.
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let err = runtime
+            .block_on(execute(
+                &dead_rpc(), &reqwest::Client::new(), &test_turnkey(),
+                "11111111111111111111111111111111", None, None,
+                "1 SOL swap karo", "solana:devnet",
+            ))
+            .unwrap_err();
+        assert!(err.to_string().contains("which token to swap into"), "got: {err}");
     }
 
     #[test]
@@ -285,18 +414,11 @@ mod tests {
             .enable_all()
             .build()
             .unwrap();
-        let rpc = SolanaRpc::new("http://127.0.0.1:1".into()).unwrap();
-        let turnkey = TurnkeyClient::new(
-            reqwest::Client::new(),
-            "org".into(),
-            "03".repeat(32),
-            "01".repeat(32),
-        )
-        .unwrap();
         let err = runtime
             .block_on(execute(
-                &rpc, &turnkey, "11111111111111111111111111111111", "22222222222222222222222222222222",
-                None, "5 ETH bhej do", "solana:devnet",
+                &dead_rpc(), &reqwest::Client::new(), &test_turnkey(),
+                "11111111111111111111111111111111", Some("22222222222222222222222222222222"), None,
+                "5 ETH bhej do", "solana:devnet",
             ))
             .unwrap_err();
         assert!(err.to_string().contains("couldn't find a token"), "got: {err}");
@@ -358,18 +480,11 @@ mod tests {
             .enable_all()
             .build()
             .unwrap();
-        let rpc = SolanaRpc::new("http://127.0.0.1:1".into()).unwrap();
-        let turnkey = TurnkeyClient::new(
-            reqwest::Client::new(),
-            "org".into(),
-            "03".repeat(32),
-            "01".repeat(32),
-        )
-        .unwrap();
         let err = runtime
             .block_on(execute(
-                &rpc, &turnkey, "11111111111111111111111111111111", "22222222222222222222222222222222",
-                None, "2 USDC bhej do", "solana:devnet",
+                &dead_rpc(), &reqwest::Client::new(), &test_turnkey(),
+                "11111111111111111111111111111111", Some("22222222222222222222222222222222"), None,
+                "2 USDC bhej do", "solana:devnet",
             ))
             .unwrap_err();
         let msg = err.to_string();
@@ -383,20 +498,38 @@ mod tests {
             .enable_all()
             .build()
             .unwrap();
-        let rpc = SolanaRpc::new("http://127.0.0.1:1".into()).unwrap();
-        let turnkey = TurnkeyClient::new(
-            reqwest::Client::new(),
-            "org".into(),
-            "03".repeat(32),
-            "01".repeat(32),
-        )
-        .unwrap();
         let err = runtime
             .block_on(execute(
-                &rpc, &turnkey, "11111111111111111111111111111111", "22222222222222222222222222222222",
-                None, "SOL bhej do", "solana:devnet",
+                &dead_rpc(), &reqwest::Client::new(), &test_turnkey(),
+                "11111111111111111111111111111111", Some("22222222222222222222222222222222"), None,
+                "SOL bhej do", "solana:devnet",
             ))
             .unwrap_err();
         assert!(err.to_string().contains("amount"));
+    }
+
+    #[test]
+    fn v0_transfer_serializes_as_versioned_wire_format() {
+        // A fixed (offline) blockhash so the test never touches an RPC — we're
+        // only asserting the v0 wire serialization here.
+        let from = Pubkey::new_unique();
+        let to = Pubkey::new_unique();
+        let ix = system_instruction::transfer(&from, &to, 1_000_000);
+        let msg = v0::Message::try_compile(&from, &[ix], &[], Hash::new_unique()).unwrap();
+        let tx = VersionedTransaction {
+            signatures: vec![],
+            message: VersionedMessage::V0(msg),
+        };
+        let bytes = bincode::serialize(&tx).unwrap();
+        // Wire format: [shortvec 0 signatures][0x80 version byte][v0 message].
+        // This is exactly what web3.js `VersionedTransaction.serialize()`
+        // produces, which is what Turnkey's Solana signer parses.
+        assert_eq!(bytes[0], 0, "empty signature set (shortvec count 0)");
+        assert_eq!(bytes[1], 0x80, "v0 version prefix byte");
+        // bincode round-trips a versioned tx (mirrors web3.js deserialize), so
+        // the same bytes we send to Turnkey both sign and broadcast validly.
+        let back: VersionedTransaction = bincode::deserialize(&bytes).unwrap();
+        assert_eq!(back, tx);
+        assert!(matches!(back.message, VersionedMessage::V0(_)));
     }
 }
