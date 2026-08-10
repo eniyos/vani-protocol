@@ -24,7 +24,7 @@ b24a179 fix: valid default address, word-order swap direction, word-boundary tok
 0098595 get_price: add USDT/BONK/JUP symbols; fix README endpoint versions
 e0b201c 🚀 First commit: vani-mcp — Rust-native MCP server (Week 1)
 ```
-One commit per milestone/fix, 4 weeks, on schedule. The **on-chain Jupiter swap** build is complete in the working tree (jupiter.rs `swap_transaction`, execute.rs `execute_swap`, 48 tests including a v0 wire-format test) and pending its final commit.
+One commit per milestone/fix, 4 weeks, on schedule. The **on-chain Jupiter swap** build is committed (`34879d4`), including a v0 wire-format serialization test (48 tests total).
 
 ## 3. Real on-chain proof — the keyless claim is demonstrated
 From the project brain-log (log.md):
