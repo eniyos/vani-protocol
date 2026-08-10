@@ -2,5 +2,3 @@
 .env
 *.local
 .DS_Store
-# Generated grant package — regenerate from grant/ if needed.
-grant-response-files.zip
