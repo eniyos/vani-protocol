@@ -1,0 +1,239 @@
+name: Release
+
+# Fires when a version tag is pushed: git tag v0.1.0 && git push --tags
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]*"
+
+env:
+  CARGO_TERM_COLOR: always
+  BINARY_NAME: vani-mcp
+
+jobs:
+  # ── 1. Run full test suite before touching releases ─────────────────────────
+  test:
+    name: Test before release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ubuntu-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - run: cargo test --workspace
+
+  # ── 2. Cross-compile for every target ───────────────────────────────────────
+  build:
+    name: Build ${{ matrix.target }}
+    needs: test
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # macOS Apple Silicon (native)
+          - target: aarch64-apple-darwin
+            runner: macos-latest
+            archive: tar.gz
+          # macOS Intel (native)
+          - target: x86_64-apple-darwin
+            runner: macos-latest
+            archive: tar.gz
+          # Linux x86_64 (musl = fully static, runs anywhere)
+          - target: x86_64-unknown-linux-musl
+            runner: ubuntu-latest
+            archive: tar.gz
+          # Linux ARM64 (Raspberry Pi, AWS Graviton, etc.)
+          - target: aarch64-unknown-linux-musl
+            runner: ubuntu-latest
+            archive: tar.gz
+          # Windows x86_64
+          - target: x86_64-pc-windows-msvc
+            runner: windows-latest
+            archive: zip
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable + target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      # musl cross-compiler (Linux static builds)
+      - name: Install musl tools (Linux)
+        if: contains(matrix.target, 'musl')
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y musl-tools
+          # ARM64 musl via cross
+          if [[ "${{ matrix.target }}" == "aarch64-unknown-linux-musl" ]]; then
+            cargo install cross --locked
+          fi
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ matrix.target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build release binary (cross for aarch64-musl)
+        shell: bash
+        run: |
+          if [[ "${{ matrix.target }}" == "aarch64-unknown-linux-musl" ]]; then
+            cross build --release --target ${{ matrix.target }} -p vani-mcp
+          else
+            cargo build --release --target ${{ matrix.target }} -p vani-mcp
+          fi
+
+      # ── Package ─────────────────────────────────────────────────────────────
+      - name: Package (tar.gz — Unix)
+        if: matrix.archive == 'tar.gz'
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          ASSET="${BINARY_NAME}-${TAG}-${{ matrix.target }}.tar.gz"
+          BIN="target/${{ matrix.target }}/release/${BINARY_NAME}"
+          tar -czf "${ASSET}" -C "$(dirname ${BIN})" "$(basename ${BIN})" \
+            README.md LICENSE .env.example
+          echo "ASSET=${ASSET}" >> "$GITHUB_ENV"
+
+      - name: Package (zip — Windows)
+        if: matrix.archive == 'zip'
+        shell: pwsh
+        run: |
+          $tag  = $env:GITHUB_REF_NAME
+          $asset = "${env:BINARY_NAME}-${tag}-${{ matrix.target }}.zip"
+          $bin  = "target\${{ matrix.target }}\release\${env:BINARY_NAME}.exe"
+          Compress-Archive -Path $bin, README.md, LICENSE, .env.example `
+            -DestinationPath $asset
+          "ASSET=$asset" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: ${{ env.ASSET }}
+
+  # ── 3. Create the GitHub Release and attach all assets ──────────────────────
+  release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write       # needed to create a release + upload assets
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: List artifacts
+        run: ls -lh artifacts/
+
+      - name: Sync version tag → npm/package.json
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"   # strip leading 'v'
+          node -e "
+            const fs = require('fs');
+            const p = JSON.parse(fs.readFileSync('npm/package.json','utf8'));
+            p.version = '${TAG}';
+            fs.writeFileSync('npm/package.json', JSON.stringify(p,null,2)+'\n');
+          "
+
+      - name: Create Release + upload assets
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Vani Protocol ${{ github.ref_name }}"
+          body: |
+            ## Vani Protocol ${{ github.ref_name }}
+
+            **Speak Hindi, Telugu, Tamil — Solana runs it.**
+
+            ### Install
+
+            **Cargo (requires Rust):**
+            ```sh
+            cargo install vani-mcp
+            ```
+
+            **Pre-built binary (no Rust needed):**
+            Download the archive for your platform below, extract, and place
+            `vani-mcp` (or `vani-mcp.exe`) somewhere on your `$PATH`.
+
+            | Platform | File |
+            |----------|------|
+            | macOS Apple Silicon | `vani-mcp-*-aarch64-apple-darwin.tar.gz` |
+            | macOS Intel | `vani-mcp-*-x86_64-apple-darwin.tar.gz` |
+            | Linux x86_64 (static) | `vani-mcp-*-x86_64-unknown-linux-musl.tar.gz` |
+            | Linux ARM64 (static) | `vani-mcp-*-aarch64-unknown-linux-musl.tar.gz` |
+            | Windows x86_64 | `vani-mcp-*-x86_64-pc-windows-msvc.zip` |
+
+            **npx (no install at all):**
+            ```sh
+            npx vani-mcp
+            ```
+
+            ### MCP config (Claude Desktop / Cursor / Kiro)
+            ```json
+            {
+              "mcpServers": {
+                "vani": {
+                  "command": "vani-mcp",
+                  "env": {
+                    "SARVAM_API_KEY": "...",
+                    "TURNKEY_ORGANIZATION_ID": "...",
+                    "TURNKEY_API_PUBLIC_KEY": "...",
+                    "TURNKEY_API_PRIVATE_KEY": "...",
+                    "TURNKEY_SOLANA_WALLET_ADDRESS": "..."
+                  }
+                }
+              }
+            }
+            ```
+
+            See [README](https://github.com/eniyos/vani-protocol#readme) for full setup.
+          files: artifacts/*
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+
+  # ── 4. Publish npm package ───────────────────────────────────────────────────
+  npm-publish:
+    name: Publish to npm
+    needs: build          # binaries must exist before npm users install
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Sync version tag → npm/package.json
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          node -e "
+            const fs = require('fs');
+            const p = JSON.parse(fs.readFileSync('npm/package.json','utf8'));
+            p.version = '${TAG}';
+            fs.writeFileSync('npm/package.json', JSON.stringify(p,null,2)+'\n');
+          "
+
+      - name: Publish (skip binary download during publish itself)
+        working-directory: npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          VANI_SKIP_INSTALL: "1"
+        run: npm publish --access public

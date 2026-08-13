@@ -1,0 +1,37 @@
+{
+  "name": "vani-mcp",
+  "version": "0.1.0",
+  "description": "Vani Protocol — vernacular (voice-first) Solana DeFi MCP server. Speak Hindi, Telugu, Tamil; execute on-chain.",
+  "homepage": "https://github.com/eniyos/vani-protocol",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/eniyos/vani-protocol.git",
+    "directory": "npm"
+  },
+  "bugs": "https://github.com/eniyos/vani-protocol/issues",
+  "license": "MIT",
+  "keywords": [
+    "solana",
+    "mcp",
+    "model-context-protocol",
+    "defi",
+    "hindi",
+    "voice",
+    "vernacular",
+    "india",
+    "telugu",
+    "tamil"
+  ],
+  "engines": { "node": ">=18" },
+  "bin": {
+    "vani-mcp": "bin/vani-mcp"
+  },
+  "scripts": {
+    "postinstall": "node scripts/install.js"
+  },
+  "files": [
+    "bin/",
+    "scripts/",
+    "README.md"
+  ]
+}

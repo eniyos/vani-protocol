@@ -1,90 +1,191 @@
-# Vani Protocol (वाणी प्रोटोकॉल)
+# वाणी · Vani Protocol
 
-> **"बोलो, Solana चलेगा"** — Speak, Solana runs.
+[![CI](https://github.com/eniyos/vani-protocol/actions/workflows/ci.yml/badge.svg)](https://github.com/eniyos/vani-protocol/actions/workflows/ci.yml)
+[![crates.io](https://img.shields.io/crates/v/vani-mcp.svg)](https://crates.io/crates/vani-mcp)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-A Rust-native [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server that lets AI
-agents (Claude, Cursor, VS Code) execute Solana DeFi actions from **vernacular voice or text** in
-Hindi, Telugu, Tamil, and more — **without any private keys**.
+> **बोलो, Solana चलेगा** — Speak Hindi, Telugu, or Tamil. Solana runs it.
 
-The core idea: India's next 100M crypto users won't use English-first interfaces. Vani is the layer
-that lets them *speak*, on chain, securely (MPC signing comes in Week 3).
+Vani is a **Rust-native [MCP](https://modelcontextprotocol.io) server** that gives any AI agent (Claude, Cursor, Kiro) nine Solana tools — live prices, swap quotes, voice transcription, and **on-chain execution** — all driven by natural language in Indian languages. Wallet keys never touch Vani; every transaction is signed inside [Turnkey's](https://turnkey.com) TEE.
 
-> Status: **Weeks 1–3.5 (2026-08-08).** Read-only MCP tools over stdio, a live Sarvam AI
-> voice layer (STT/TTS), and **Turnkey TEE signing** — native-SOL **and** SPL-token sends signed
-> off-process, so no wallet key ever touches Vani. The execution layer is unit-tested (45 tests)
-> but not yet broadcast to a real chain; `scripts/e2e_week3.sh` funds a devnet wallet by address
-> and drives one real `vani_execute` once the Turnkey creds are in `.env`. On-chain swap execution
-> is queued behind that live proof. This is the
-> project's codebase — for the knowledge base that tracks design, decisions, and roadmap, see the
-> [Vani-Protocol-brain](https://github.com/eniyos/Vani-Protocol-brain) repo.
-
-## What this builds on
-
-- **rmcp 3.x** — the official Rust MCP SDK (`modelcontextprotocol/rust-sdk`). Tokio-based server
-  over **stdio**, tool schemas derived from Rust types via `schemars`.
-- **Solana JSON-RPC** — read-only balance/token queries (Devnet by default, zero-cost).
-- **Jupiter public APIs** — read-only price + swap-quote lookups (no keys).
-
-## Quick start
-
-```sh
-cargo run -p vani-mcp
+```
+You  →  "1 SOL se USDC swap karo"
+Agent → vani_execute({ text: "1 SOL se USDC swap karo" })
+Vani → Jupiter quote → Turnkey signs → devnet broadcast → sig: 2pJ5bNh6…
 ```
 
-The server speaks MCP over **stdio**. Point any MCP-capable agent at it:
+---
+
+## Install
+
+### Option A — cargo (requires Rust)
+```sh
+cargo install vani-mcp
+```
+
+### Option B — pre-built binary (no Rust needed)
+Download the archive for your platform from the [latest release](https://github.com/eniyos/vani-protocol/releases/latest), extract, and place `vani-mcp` on your `$PATH`.
+
+| Platform | File |
+|----------|------|
+| macOS Apple Silicon | `vani-mcp-*-aarch64-apple-darwin.tar.gz` |
+| macOS Intel | `vani-mcp-*-x86_64-apple-darwin.tar.gz` |
+| Linux x86_64 (static) | `vani-mcp-*-x86_64-unknown-linux-musl.tar.gz` |
+| Linux ARM64 | `vani-mcp-*-aarch64-unknown-linux-musl.tar.gz` |
+| Windows | `vani-mcp-*-x86_64-pc-windows-msvc.zip` |
+
+### Option C — npx (no install at all)
+```sh
+npx vani-mcp
+```
+
+---
+
+## Wire into your AI agent
+
+Add this block to your MCP client config and restart the client.
+
+**Claude Desktop** — `~/Library/Application Support/Claude/claude_desktop_config.json`  
+**Cursor** — `.cursor/mcp.json`  
+**Kiro** — `~/.kiro/settings/mcp.json`
 
 ```jsonc
-// .claude/settings.json  (Claude Code) or Cursor MCP config
-// Run from the repo root, or set "cwd" to your clone's path.
 {
   "mcpServers": {
     "vani": {
-      "command": "cargo",
-      "args": ["run", "-p", "vani-mcp"]
+      "command": "vani-mcp",        // or full path to the binary
+      "env": {
+        // ── Voice (optional) ──────────────────────────────────────────────
+        "SARVAM_API_KEY": "sk_...",          // sarvam.ai → free ₹100 credits
+
+        // ── On-chain execution (optional) ─────────────────────────────────
+        "TURNKEY_ORGANIZATION_ID": "...",    // turnkey.com → free Starter org
+        "TURNKEY_API_PUBLIC_KEY":  "...",    // P-256 API key (66-char hex)
+        "TURNKEY_API_PRIVATE_KEY": "...",    // P-256 API key (64-char hex)
+        "TURNKEY_SOLANA_WALLET_ADDRESS": "...", // from turnkey_create_wallet
+
+        // ── Chain (optional) ──────────────────────────────────────────────
+        "VANI_EXECUTE_NETWORK": "solana:mainnet-beta",  // default: devnet
+        "RPC_URL": "https://api.mainnet-beta.solana.com"
+      }
     }
   }
 }
 ```
 
-## Tools (v1 — all read-only, no keys)
+> **Read-only tools** (`get_balance`, `get_price`, `jupiter_quote`, `vani_command`) work with **zero credentials** — just the binary.  
+> **Voice tools** need `SARVAM_API_KEY`.  
+> **Execution tools** need all four `TURNKEY_*` vars.
 
-| Tool | Description |
-|------|-------------|
-| `get_balance`       | SOL balance for an address (lamports → SOL) |
-| `get_token_balance` | SPL token balance for an address + mint (human amount + raw units) |
-| `get_price`         | Live token price (Jupiter price API v3; SOL/USDC/USDT/BONK/JUP) |
-| `jupiter_quote`     | Swap quote (Jupiter swap API v1) — no execution |
-| `vani_command`      | Parse a Hindi/Hinglish/Telugu/Tamil/English command into a structured intent |
-| `tts_speak`         | Text → speech (Sarvam `bulbul:v3`), returns base64 WAV |
-| `stt_transcribe`    | Audio → text (Sarvam `saaras:v3`), returns `[language] transcript` |
-| `turnkey_create_wallet` | Provision a Solana wallet in Turnkey's TEE; returns wallet id + address |
-| `vani_execute`      | Send native SOL or an SPL token (USDC/USDT/BONK/JUP), signed in Turnkey's TEE — no key touches Vani |
+---
 
-## Configuration
+## Tools
 
-Copy `.env.example` → `.env`:
+| Tool | Needs creds? | What it does |
+|------|:---:|------|
+| `get_balance` | — | SOL balance of any address |
+| `get_token_balance` | — | SPL token balance (USDC / USDT / BONK / JUP) |
+| `get_price` | — | Live USD price via Jupiter (SOL, USDC, USDT, BONK, JUP) |
+| `jupiter_quote` | — | Read-only swap quote — route, output amount, price impact |
+| `vani_command` | — | Parse a vernacular command → structured JSON intent |
+| `tts_speak` | Sarvam | Text → base64 WAV (Hindi, Telugu, Tamil + 8 more) |
+| `stt_transcribe` | Sarvam | Audio → `[detected-lang] transcript` |
+| `turnkey_create_wallet` | Turnkey | Provision a new Solana wallet in Turnkey's TEE |
+| `vani_execute` | Turnkey | **Send SOL / SPL token or swap** — signed in TEE, keys never leave Turnkey |
 
-| Env var | Purpose | Default |
+---
+
+## Language support
+
+`vani_command` and `vani_execute` understand commands in:
+
+| Language | Example |
+|----------|---------|
+| Hindi | `"एक SOL स्वैप करो USDC में"` |
+| Hinglish | `"1 SOL se USDC swap karo"` |
+| Telugu | `"1 SOL ని USDC కి మార్చు"` |
+| Tamil | `"1 SOL ஐ USDC ஆக மாற்று"` |
+| English | `"swap 1 SOL for USDC"` |
+
+Numbers work in Devanagari digits (१, २, …) and Hindi words (एक, दो, तीन…).
+
+---
+
+## Quickstart — first execution in 5 minutes
+
+```sh
+# 1. Install
+cargo install vani-mcp
+
+# 2. Sign up (both free):
+#    Sarvam AI  → https://dashboard.sarvam.ai   (get SARVAM_API_KEY)
+#    Turnkey    → https://app.turnkey.com        (get org id + generate API key pair)
+
+# 3. Create your on-chain wallet (once)
+#    In your agent: call turnkey_create_wallet({ name: "my-vani-wallet" })
+#    → copy the returned address → set TURNKEY_SOLANA_WALLET_ADDRESS
+
+# 4. Fund it (devnet — free)
+solana airdrop 1 <YOUR_WALLET_ADDRESS> --url devnet
+
+# 5. Tell your agent:
+#    "0.01 SOL bhej do" (to: <any-devnet-address>)
+#    → Vani parses, builds tx, Turnkey TEE signs, broadcasts, returns tx signature
+```
+
+---
+
+## Architecture
+
+```
+AI Agent (Claude / Cursor / Kiro)
+        │  JSON-RPC over stdio (MCP)
+        ▼
+   vani-mcp  ←── server.rs (9 tools)
+        │
+        ├── vanicommand.rs   rule-based NLU for 5 languages
+        ├── jupiter.rs       price API v3 + swap API v1
+        ├── rpc.rs           Solana JSON-RPC (balance, broadcast)
+        ├── sarvam.rs        STT saaras:v3  /  TTS bulbul:v3
+        ├── execute.rs       unsigned tx builder (SOL / SPL / swap)
+        └── turnkey.rs       P-256 stamped requests → TEE sign
+```
+
+**Security invariant:** Vani constructs unsigned transactions locally and hands bytes to Turnkey's enclave for signing. A compromised Vani process can *request* a transfer; it can never exfiltrate a wallet key.
+
+---
+
+## Configuration reference
+
+| Env var | Default | Purpose |
 |---------|---------|---------|
-| `RPC_URL` | Solana JSON-RPC endpoint | `https://api.devnet.solana.com` |
-| `VANI_DEFAULT_ADDRESS` | Address used when a tool's address field is left empty | none |
-| `SARVAM_API_KEY` | Sarvam AI key for `tts_speak`/`stt_transcribe` | none (voice tools error without it) |
-| `TURNKEY_ORGANIZATION_ID` | Turnkey org for `vani_execute` | none (execution tools error without it) |
-| `TURNKEY_API_PUBLIC_KEY` | Turnkey API key public part (P-256 hex) | none |
-| `TURNKEY_API_PRIVATE_KEY` | Turnkey API key private part (32-byte hex) | none |
-| `TURNKEY_SOLANA_WALLET_ADDRESS` | Turnkey wallet signer + fee payer | none |
-| `VANI_EXECUTE_NETWORK` | CAIP-2 chain for `vani_execute` | `solana:devnet` |
+| `RPC_URL` | `https://api.devnet.solana.com` | Solana JSON-RPC endpoint |
+| `VANI_DEFAULT_ADDRESS` | *(none)* | Fallback address when a tool's address field is empty |
+| `SARVAM_API_KEY` | *(none)* | Sarvam AI key — voice tools error gracefully without it |
+| `TURNKEY_ORGANIZATION_ID` | *(none)* | Turnkey org — execution tools error gracefully without it |
+| `TURNKEY_API_PUBLIC_KEY` | *(none)* | P-256 API key public part (66-char hex, `02`/`03` prefix) |
+| `TURNKEY_API_PRIVATE_KEY` | *(none)* | P-256 API key private part (64-char hex) |
+| `TURNKEY_SOLANA_WALLET_ADDRESS` | *(none)* | Signer + fee payer — output of `turnkey_create_wallet` |
+| `VANI_EXECUTE_NETWORK` | `solana:devnet` | CAIP-2 chain for `vani_execute` |
 
-Keep `.env` out of git (it already is).
+Copy `.env.example` → `.env` to get started.
 
-## Roadmap
+---
 
-- **Wk 1 ✓:** read-only Rust MCP server over stdio, vernacular command parser (27 tests).
-- **Wk 2 ✓:** Sarvam AI STT/TTS voice layer (pulled forward to 08-06) + cross-language commands (32 tests).
-- **Wk 3 ✓:** Turnkey TEE signing → `vani_execute` native-SOL sends (Knot Wallet verified un-integrable — dormant, unlicensed, API down — and is itself a Turnkey wrapper; see ADR-007 in the brain). SECURITY.md shipped.
-- **Wk 3.5 (in progress 08-08):** SPL-token transfer live — `vani_execute` now sends USDC/USDT/BONK/JUP via `TransferChecked` between associated token accounts (45 tests). `scripts/e2e_week3.sh` proves SOL+token sends on real devnet once Turnkey creds are in `.env`. On-chain Jupiter swap execution is queued **behind that live proof** — the v0-address-lookup assembly needs a funded wallet to validate against.
-- **Wk 4:** beta users, landing page, Superteam India grant.
+## Development
+
+```sh
+git clone https://github.com/eniyos/vani-protocol
+cd vani-protocol
+cp .env.example .env   # fill in your keys
+
+cargo test             # 48 unit tests
+cargo clippy -p vani-mcp --all-targets -- -D warnings
+cargo run -p vani-mcp  # start the MCP server over stdio
+```
+
+---
 
 ## License
 
-MIT. Open-source by design — proof-of-work for the grant.
+MIT — open-source by design.
