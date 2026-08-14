@@ -17,9 +17,13 @@ use crate::rpc::SolanaRpc;
 use crate::turnkey::TurnkeyClient;
 use crate::vanicommand;
 
-/// Approximate Devnet fee budget (lamports) checked before submitting so we
-/// don't send Turnkey a transaction that is doomed to fail at broadcast.
-const FEE_BUDGET_LAMPORTS: u64 = 5_000;
+/// Fee budget (lamports) checked before submitting so we don't send Turnkey a
+/// transaction that is doomed to fail at broadcast.
+/// 25_000 covers the base signature fee (5_000) + a conservative priority-fee
+/// buffer that keeps simple transfers and swaps landing on mainnet under normal
+/// congestion. Jupiter sets its own compute budget on swap transactions; this
+/// constant guards the SOL-send and SPL-token-send paths only.
+const FEE_BUDGET_LAMPORTS: u64 = 25_000;
 
 /// SPL Token program id (classic, not Token-2022).
 const TOKEN_PROGRAM_ID: &str = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";

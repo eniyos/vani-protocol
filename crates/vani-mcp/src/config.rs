@@ -21,7 +21,7 @@ pub struct Config {
     pub turnkey_api_private: Option<String>,
     /// Derived Solana address of the Turnkey wallet used as signer + fee payer.
     pub turnkey_sol_wallet: Option<String>,
-    /// Network for `vani_execute` (CAIP-2). Defaults to devnet.
+    /// Network for `vani_execute` (CAIP-2). Defaults to mainnet-beta.
     pub execute_network: String,
 }
 
@@ -29,7 +29,7 @@ impl Config {
     pub fn from_env() -> Result<Self> {
         dotenvy::dotenv().ok();
         let rpc_url = std::env::var("RPC_URL")
-            .unwrap_or_else(|_| "https://api.devnet.solana.com".to_string());
+            .unwrap_or_else(|_| "https://api.mainnet-beta.solana.com".to_string());
         // Trim env values: accidental trailing whitespace/newlines would make a
         // base58 address invalid and a Sarvam key silently 403.
         let default_address = std::env::var("VANI_DEFAULT_ADDRESS")
@@ -59,7 +59,7 @@ impl Config {
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty());
         let execute_network = std::env::var("VANI_EXECUTE_NETWORK")
-            .unwrap_or_else(|_| "solana:devnet".to_string());
+            .unwrap_or_else(|_| "solana:mainnet-beta".to_string());
         Ok(Self {
             rpc_url,
             default_address,
