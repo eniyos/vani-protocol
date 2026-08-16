@@ -172,6 +172,12 @@ Copy `.env.example` → `.env` to get started.
 
 ---
 
+## Landing Page
+
+Check out the full landing page at [https://eniyos.github.io/vani-protocol/](https://eniyos.github.io/vani-protocol/) for a visual overview of Vani Protocol's features, tools, and installation options.
+
+---
+
 ## Development
 
 ```sh

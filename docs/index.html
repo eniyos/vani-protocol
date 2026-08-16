@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vani Protocol - बोलो, Solana चलेगा</title>
+    <meta name="description" content="Vani Protocol - A vernacular voice-first AI agent SDK for Solana targeting Indian developers. Speak Hindi, Telugu, or Tamil. Solana runs it.">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: #1a1a1a;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+
+        /* Header */
+        header {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            position: fixed;
+            width: 100%;
+            top: 0;
+            z-index: 1000;
+            box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
+        }
+
+        nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 0;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #667eea;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .logo span {
+            color: #1a1a1a;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 2rem;
+            list-style: none;
+        }
+
+        .nav-links a {
+            text-decoration: none;
+            color: #1a1a1a;
+            font-weight: 500;
+            transition: color 0.3s;
+        }
+
+        .nav-links a:hover {
+            color: #667eea;
+        }
+
+        .cta-button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: 50px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+
+        .cta-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        /* Hero Section */
+        .hero {
+            padding: 160px 0 100px;
+            text-align: center;
+            color: white;
+        }
+
+        .hero h1 {
+            font-size: 3.5rem;
+            font-weight: 800;
+            margin-bottom: 1rem;
+            line-height: 1.2;
+        }
+
+        .hero .tagline {
+            font-size: 1.5rem;
+            margin-bottom: 2rem;
+            opacity: 0.9;
+        }
+
+        .hero .description {
+            font-size: 1.1rem;
+            max-width: 800px;
+            margin: 0 auto 2rem;
+            opacity: 0.85;
+        }
+
+        .hero-buttons {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .hero-button {
+            background: white;
+            color: #667eea;
+            padding: 1rem 2rem;
+            border-radius: 50px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: transform 0.3s, box-shadow 0.3s;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .hero-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+        }
+
+        .hero-button.secondary {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: 2px solid white;
+        }
+
+        .hero-button.secondary:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        /* Features Section */
+        .features {
+            background: white;
+            padding: 100px 0;
+        }
+
+        .section-title {
+            text-align: center;
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            color: #1a1a1a;
+        }
+
+        .section-subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 3rem;
+            font-size: 1.1rem;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+        }
+
+        .feature-card {
+            background: #f8f9fa;
+            padding: 2rem;
+            border-radius: 20px;
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+
+        .feature-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+        }
+
+        .feature-icon {
+            font-size: 2.5rem;
+            color: #667eea;
+            margin-bottom: 1rem;
+        }
+
+        .feature-card h3 {
+            font-size: 1.3rem;
+            margin-bottom: 0.5rem;
+            color: #1a1a1a;
+        }
+
+        .feature-card p {
+            color: #666;
+            line-height: 1.6;
+        }
+
+        /* Tools Section */
+        .tools {
+            background: #f8f9fa;
+            padding: 100px 0;
+        }
+
+        .tools-table {
+            background: white;
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+        }
+
+        .tools-table table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .tools-table th,
+        .tools-table td {
+            padding: 1rem 1.5rem;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+
+        .tools-table th {
+            background: #667eea;
+            color: white;
+            font-weight: 600;
+        }
+
+        .tools-table tr:hover {
+            background: #f8f9fa;
+        }
+
+        .tools-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .cred-badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+
+        .cred-badge.none {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+
+        .cred-badge.required {
+            background: #fff3e0;
+            color: #e65100;
+        }
+
+        /* Languages Section */
+        .languages {
+            background: white;
+            padding: 100px 0;
+        }
+
+        .languages-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .language-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 2rem;
+            border-radius: 20px;
+            text-align: center;
+            transition: transform 0.3s;
+        }
+
+        .language-card:hover {
+            transform: scale(1.05);
+        }
+
+        .language-card .example {
+            font-style: italic;
+            margin-top: 1rem;
+            opacity: 0.9;
+            font-size: 0.9rem;
+        }
+
+        /* Installation Section */
+        .installation {
+            background: #1a1a1a;
+            color: white;
+            padding: 100px 0;
+        }
+
+        .installation .section-title,
+        .installation .section-subtitle {
+            color: white;
+        }
+
+        .installation .section-subtitle {
+            opacity: 0.8;
+        }
+
+        .install-methods {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+        }
+
+        .install-card {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 2rem;
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .install-card h3 {
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .install-card pre {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 1rem;
+            border-radius: 10px;
+            overflow-x: auto;
+            margin: 1rem 0;
+        }
+
+        .install-card code {
+            color: #a5d6ff;
+            font-family: 'Courier New', monospace;
+        }
+
+        /* Architecture Section */
+        .architecture {
+            background: white;
+            padding: 100px 0;
+        }
+
+        .architecture-diagram {
+            background: #f8f9fa;
+            padding: 2rem;
+            border-radius: 20px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            overflow-x: auto;
+            line-height: 1.8;
+        }
+
+        /* Security Section */
+        .security {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 100px 0;
+        }
+
+        .security .section-title,
+        .security .section-subtitle {
+            color: white;
+        }
+
+        .security-box {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 2rem;
+            border-radius: 20px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            max-width: 800px;
+            margin: 0 auto;
+            text-align: center;
+        }
+
+        .security-box i {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+
+        /* Footer */
+        footer {
+            background: #1a1a1a;
+            color: white;
+            padding: 3rem 0;
+            text-align: center;
+        }
+
+        .footer-links {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .footer-links a {
+            color: white;
+            text-decoration: none;
+            transition: opacity 0.3s;
+        }
+
+        .footer-links a:hover {
+            opacity: 0.8;
+        }
+
+        .footer-links i {
+            margin-right: 0.5rem;
+        }
+
+        .copyright {
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .hero h1 {
+                font-size: 2.5rem;
+            }
+
+            .hero .tagline {
+                font-size: 1.2rem;
+            }
+
+            .nav-links {
+                display: none;
+            }
+
+            .features-grid,
+            .languages-grid,
+            .install-methods {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Animation */
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .animate {
+            animation: fadeInUp 0.6s ease-out;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <nav>
+                <div class="logo">
+                    <i class="fas fa-microphone"></i>
+                    <span>वाणी</span> Protocol
+                </div>
+                <ul class="nav-links">
+                    <li><a href="#features">Features</a></li>
+                    <li><a href="#tools">Tools</a></li>
+                    <li><a href="#languages">Languages</a></li>
+                    <li><a href="#install">Install</a></li>
+                    <li><a href="#architecture">Architecture</a></li>
+                </ul>
+                <a href="https://github.com/eniyos/vani-protocol" class="cta-button" target="_blank">
+                    <i class="fab fa-github"></i> GitHub
+                </a>
+            </nav>
+        </div>
+    </header>
+
+    <section class="hero">
+        <div class="container">
+            <h1 class="animate">बोलो, Solana चलेगा</h1>
+            <p class="tagline animate">Speak Hindi, Telugu, or Tamil. Solana runs it.</p>
+            <p class="description animate">
+                Vani is a Rust-native MCP server that gives any AI agent nine Solana tools — 
+                live prices, swap quotes, voice transcription, and on-chain execution — 
+                all driven by natural language in Indian languages.
+            </p>
+            <div class="hero-buttons animate">
+                <a href="#install" class="hero-button">
+                    <i class="fas fa-download"></i> Get Started
+                </a>
+                <a href="https://github.com/eniyos/vani-protocol" class="hero-button secondary" target="_blank">
+                    <i class="fab fa-github"></i> View on GitHub
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <section class="features" id="features">
+        <div class="container">
+            <h2 class="section-title">Why Vani?</h2>
+            <p class="section-subtitle">Built for India's next 100M crypto users</p>
+            
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon"><i class="fas fa-language"></i></div>
+                    <h3>Vernacular-First</h3>
+                    <p>Speak Hindi, Telugu, Tamil, or Hinglish. Vani understands and responds in the same language. No English barrier to DeFi.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon"><i class="fas fa-shield-alt"></i></div>
+                    <h3>MPC Security</h3>
+                    <p>Wallet keys never touch Vani. Every transaction is signed inside Turnkey's TEE. Zero private-key exposure.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon"><i class="fas fa-bolt"></i></div>
+                    <h3>Rust-Native</h3>
+                    <p>First Rust-native MCP server in the space. Fast, memory-safe, and no Python/TS runtime dependency.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon"><i class="fas fa-plug"></i></div>
+                    <h3>Universal MCP</h3>
+                    <p>Works with Claude, Cursor, Kiro, and any MCP-compatible AI agent. One integration, endless possibilities.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon"><i class="fas fa-coins"></i></div>
+                    <h3>Full DeFi Stack</h3>
+                    <p>SOL sends, SPL token transfers, Jupiter swaps — all via voice commands. Complete DeFi operations hands-free.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon"><i class="fas fa-mobile-alt"></i></div>
+                    <h3>Zero Install</h3>
+                    <p>Three install paths: cargo install, pre-built binary, or npx. No friction for any user profile.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="tools" id="tools">
+        <div class="container">
+            <h2 class="section-title">9 Powerful Tools</h2>
+            <p class="section-subtitle">Everything you need for voice-controlled DeFi</p>
+            
+            <div class="tools-table">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Tool</th>
+                            <th>Credentials</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>get_balance</code></td>
+                            <td><span class="cred-badge none">None</span></td>
+                            <td>SOL balance of any address</td>
+                        </tr>
+                        <tr>
+                            <td><code>get_token_balance</code></td>
+                            <td><span class="cred-badge none">None</span></td>
+                            <td>SPL token balance (USDC/USDT/BONK/JUP)</td>
+                        </tr>
+                        <tr>
+                            <td><code>get_price</code></td>
+                            <td><span class="cred-badge none">None</span></td>
+                            <td>Live USD price via Jupiter</td>
+                        </tr>
+                        <tr>
+                            <td><code>jupiter_quote</code></td>
+                            <td><span class="cred-badge none">None</span></td>
+                            <td>Read-only swap quote with route analysis</td>
+                        </tr>
+                        <tr>
+                            <td><code>vani_command</code></td>
+                            <td><span class="cred-badge none">None</span></td>
+                            <td>Parse vernacular command → structured JSON</td>
+                        </tr>
+                        <tr>
+                            <td><code>tts_speak</code></td>
+                            <td><span class="cred-badge required">Sarvam</span></td>
+                            <td>Text → base64 WAV (11 Indian languages)</td>
+                        </tr>
+                        <tr>
+                            <td><code>stt_transcribe</code></td>
+                            <td><span class="cred-badge required">Sarvam</span></td>
+                            <td>Audio → [detected-lang] transcript</td>
+                        </tr>
+                        <tr>
+                            <td><code>turnkey_create_wallet</code></td>
+                            <td><span class="cred-badge required">Turnkey</span></td>
+                            <td>Provision new Solana wallet in TEE</td>
+                        </tr>
+                        <tr>
+                            <td><code>vani_execute</code></td>
+                            <td><span class="cred-badge required">Turnkey</span></td>
+                            <td>Send SOL/SPL tokens or swap — signed in TEE</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <section class="languages" id="languages">
+        <div class="container">
+            <h2 class="section-title">Multi-Language Support</h2>
+            <p class="section-subtitle">Speak naturally. Vani understands.</p>
+            
+            <div class="languages-grid">
+                <div class="language-card">
+                    <h3>Hindi</h3>
+                    <p class="example">"एक SOL स्वैप करो USDC में"</p>
+                </div>
+                <div class="language-card">
+                    <h3>Hinglish</h3>
+                    <p class="example">"1 SOL se USDC swap karo"</p>
+                </div>
+                <div class="language-card">
+                    <h3>Telugu</h3>
+                    <p class="example">"1 SOL ని USDC కి మార్చు"</p>
+                </div>
+                <div class="language-card">
+                    <h3>Tamil</h3>
+                    <p class="example">"1 SOL ஐ USDC ஆக மாற்று"</p>
+                </div>
+                <div class="language-card">
+                    <h3>English</h3>
+                    <p class="example">"swap 1 SOL for USDC"</p>
+                </div>
+            </div>
+            
+            <p style="text-align: center; margin-top: 2rem; color: #666;">
+                <i class="fas fa-info-circle"></i> Numbers work in Devanagari digits (१, २, …) and Hindi words (एक, दो, तीन…)
+            </p>
+        </div>
+    </section>
+
+    <section class="installation" id="install">
+        <div class="container">
+            <h2 class="section-title">Easy Installation</h2>
+            <p class="section-subtitle">Get started in under 60 seconds</p>
+            
+            <div class="install-methods">
+                <div class="install-card">
+                    <h3><i class="fab fa-rust"></i> Cargo Install</h3>
+                    <p>Requires Rust toolchain</p>
+                    <pre><code>cargo install vani-mcp</code></pre>
+                </div>
+                <div class="install-card">
+                    <h3><i class="fas fa-download"></i> Pre-built Binary</h3>
+                    <p>No Rust needed</p>
+                    <pre><code># Download from GitHub Releases
+# Extract and place on PATH</code></pre>
+                </div>
+                <div class="install-card">
+                    <h3><i class="fab fa-npm"></i> NPM Install</h3>
+                    <p>Zero install at all</p>
+                    <pre><code>npx vani-mcp</code></pre>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="architecture" id="architecture">
+        <div class="container">
+            <h2 class="section-title">Architecture</h2>
+            <p class="section-subtitle">Clean, modular, and secure by design</p>
+            
+            <div class="architecture-diagram">
+<pre>
+AI Agent (Claude / Cursor / Kiro)
+        │  JSON-RPC over stdio (MCP)
+        ▼
+   vani-mcp  ←── server.rs (9 tools)
+        │
+        ├── vanicommand.rs   rule-based NLU for 5 languages
+        ├── jupiter.rs       price API v3 + swap API v1
+        ├── rpc.rs           Solana JSON-RPC (balance, broadcast)
+        ├── sarvam.rs        STT saaras:v3  /  TTS bulbul:v3
+        ├── execute.rs       unsigned tx builder (SOL / SPL / swap)
+        └── turnkey.rs       P-256 stamped requests → TEE sign
+</pre>
+            </div>
+        </div>
+    </section>
+
+    <section class="security">
+        <div class="container">
+            <h2 class="section-title">Security First</h2>
+            <p class="section-subtitle">Your keys never leave the secure enclave</p>
+            
+            <div class="security-box">
+                <i class="fas fa-shield-alt"></i>
+                <h3>Security Invariant</h3>
+                <p style="margin-top: 1rem; opacity: 0.9;">
+                    Vani constructs unsigned transactions locally and hands bytes to Turnkey's enclave for signing. 
+                    A compromised Vani process can <em>request</em> a transfer; it can never exfiltrate a wallet key.
+                </p>
+            </div>
+        </div>
+    </section>
+
+    <footer>
+        <div class="container">
+            <div class="footer-links">
+                <a href="https://github.com/eniyos/vani-protocol" target="_blank">
+                    <i class="fab fa-github"></i> GitHub
+                </a>
+                <a href="https://github.com/eniyos/vani-protocol/blob/main/LICENSE" target="_blank">
+                    <i class="fas fa-balance-scale"></i> MIT License
+                </a>
+                <a href="https://github.com/eniyos/vani-protocol/issues" target="_blank">
+                    <i class="fas fa-bug"></i> Issues
+                </a>
+            </div>
+            <p class="copyright">
+                © 2024 Vani Protocol. Built with ❤️ for India's crypto future.
+            </p>
+        </div>
+    </footer>
+
+    <script>
+        // Smooth scrolling for navigation links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
+
+        // Add scroll animation for elements
+        const observerOptions = {
+            threshold: 0.1,
+            rootMargin: '0px 0px -50px 0px'
+        };
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('animate');
+                }
+            });
+        }, observerOptions);
+
+        document.querySelectorAll('.feature-card, .language-card, .install-card').forEach(el => {
+            observer.observe(el);
+        });
+    </script>
+</body>
+</html>
