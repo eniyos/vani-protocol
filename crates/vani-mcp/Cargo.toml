@@ -2,6 +2,15 @@
 name = "vani-mcp"
 version = "0.1.0"
 edition = "2021"
+
+[lib]
+name = "vani_mcp"
+path = "src/lib.rs"
+
+[[bin]]
+name = "vani-mcp"
+path = "src/main.rs"
+
 description = "Vani Protocol — vernacular (voice-first) Solana DeFi over MCP. Speak Hindi, Telugu, Tamil; execute on-chain."
 license = "MIT"
 repository = "https://github.com/eniyos/vani-protocol"

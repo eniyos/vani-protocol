@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/vani-mcp"]
+members = ["crates/vani-mcp", "crates/vani-api"]
 
 [workspace.package]
 edition = "2021"

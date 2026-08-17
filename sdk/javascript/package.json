@@ -1,0 +1,24 @@
+{
+  "name": "@vani/sdk",
+  "version": "0.1.0",
+  "description": "Vani Protocol JavaScript SDK for vernacular crypto operations",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "test": "node test.js"
+  },
+  "keywords": [
+    "vani",
+    "crypto",
+    "vernacular",
+    "hindi",
+    "voice",
+    "solana",
+    "defi"
+  ],
+  "author": "Vani Protocol",
+  "license": "MIT",
+  "dependencies": {
+    "node-fetch": "^3.3.2"
+  }
+}
